@@ -95,6 +95,14 @@ export class Playlist {
     return this.moveTo(this.#current?.prev ?? null);
   }
 
+  selectFirst(): Node<Song> | null {
+    return this.moveTo(this.#songs.head);
+  }
+
+  selectLast(): Node<Song> | null {
+    return this.moveTo(this.#songs.tail);
+  }
+
   hasNext(): boolean {
     return (this.#current?.next ?? null) !== null;
   }

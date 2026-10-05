@@ -1,3 +1,6 @@
+const REPEAT_ARROWS =
+  '<path d="m16.5 3 3.5 3.5-3.5 3.5" /><path d="M4 11.5v-1a4 4 0 0 1 4-4h12" /><path d="m7.5 21-3.5-3.5 3.5-3.5" /><path d="M20 12.5v1a4 4 0 0 1-4 4H4" />';
+
 const ICONS = {
   logo: '<path d="M9 18V6l11-2v12" /><circle cx="6.5" cy="18" r="2.5" /><circle cx="17.5" cy="16" r="2.5" />',
   music: '<path d="M10 17V5.5l9-1.5v11" /><circle cx="7.5" cy="17" r="2.5" /><circle cx="16.5" cy="15" r="2.5" />',
@@ -20,6 +23,9 @@ const ICONS = {
   check: '<path d="m5 12.5 4.5 4.5L19 7.5" />',
   alert: '<circle cx="12" cy="12" r="9" /><path d="M12 7.5v5.5M12 16.5v.01" />',
   info: '<circle cx="12" cy="12" r="9" /><path d="M12 11v5.5M12 7.5v.01" />',
+  repeat: REPEAT_ARROWS,
+  repeatOne: `${REPEAT_ARROWS}<path d="M10.8 10.6 12.3 9.8v4.6" />`,
+  search: '<circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" />',
 } as const;
 
 export type IconName = keyof typeof ICONS;
@@ -70,4 +76,13 @@ export function createLabeledButton(name: IconName, label: string, className: st
   text.textContent = label;
   button.append(createIcon(name), text);
   return button;
+}
+
+export function setCover(cover: HTMLElement, url: string | null): void {
+  cover.classList.toggle("has-image", url !== null);
+  if (url === null) {
+    cover.replaceChildren(createIcon("music"));
+  } else {
+    cover.replaceChildren(Object.assign(document.createElement("img"), { src: url, alt: "", loading: "lazy" }));
+  }
 }

@@ -34,3 +34,12 @@ export function formatTotal(seconds: number): string {
 export function countLabel(count: number, singular: string, plural: string): string {
   return `${count} ${count === 1 ? singular : plural}`;
 }
+
+export function comparableText(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/(?<!n)̃|[̀-̂̄-ͯ]/g, "")
+    .normalize("NFC");
+}

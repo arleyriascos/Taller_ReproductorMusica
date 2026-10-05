@@ -28,6 +28,7 @@ Every data-structure test ends by asserting the invariants of `DATA_STRUCTURE.md
 - `addAtPosition` converts 1-based positions; invalid positions rejected.
 - `next`/`previous` move `current`; `hasNext`/`hasPrevious` false at the edges.
 - Removing current with next → next; at tail → previous; only node → `null`.
+- `selectFirst` / `selectLast`: `null` on empty; move `current` to `head` / `tail` from anywhere; same node with one song; never make the list circular (`next()` at tail and `previous()` at head still return `null`) and record no operation.
 - `removeAllOf` removes every node holding the song.
 - `clone`: same order, different nodes, same `Song` objects, empty history, `current` null, original unchanged after modifying the clone.
 
@@ -42,6 +43,13 @@ Every data-structure test ends by asserting the invariants of `DATA_STRUCTURE.md
 - `removeSongEverywhere` removes every node of the song from the Library and all playlists and makes the song unavailable.
 - `duplicatePlaylist`: names "(copia)", "(copia 2)", "(copia 3)"; respects 40 characters; the copy is independent; unknown id throws.
 
+### format.test.ts
+- `formatTime`: m:ss, h:mm:ss, fractions dropped, "—:—" for 0, negative, NaN and Infinity.
+- `formatElapsed`: same format, "0:00" for invalid values.
+- `formatTotal`: rounds up to minutes, "N h M min" from 60 minutes, "0 min" for invalid values.
+- `countLabel`: singular only for exactly 1.
+- `comparableText`: ignores case, spaces, accents, dieresis and circumflex; "ñ" stays distinct in composed and decomposed form; blank text → "".
+
 ### SongLoader.test.ts
 Runs in Node with real `File` objects and an injected playability probe (no audio element).
 - Ignores non-audio files and counts them in `ignored`.
@@ -53,7 +61,7 @@ Runs in Node with real `File` objects and an injected playability probe (no audi
 - Order preserved with more files than the concurrency limit (4).
 - A generated WAV with RIFF INFO tags yields its title, artist and duration.
 
-`MusicPlayer` is not unit-tested (it depends on the browser audio element); it is validated manually (M08–M14, M20, M21).
+`MusicPlayer` is not unit-tested (it depends on the browser audio element); it is validated manually (M08–M14, M20, M21, M34, M37–M43, M46–M48).
 
 ## 2. Manual
 
@@ -92,6 +100,21 @@ Runs in Node with real `File` objects and an injected playability probe (no audi
 | M31 | Mobile width | Drawer, bottom sheet, compact player |
 | M32 | Keyboard only | All main actions reachable |
 | M33 | Deployed version on another computer | Works with that computer's files |
+| M34 | Con la pantalla del celular apagada, al terminar una canción empieza la siguiente | La reproducción continúa en segundo plano |
+| M35 | Sidebar at 768, 900, 1024, 1180, 1366 and 1440 px, light and dark | "Biblioteca" and headings complete, buttons inside the sidebar, long playlist names with ellipsis and full name on hover, no horizontal scroll |
+| M36 | Short window (sidebar taller than the screen) | Thin themed scrollbar only in that case |
+| M37 | Nothing to play (empty Library, empty playlist) | Play buttons gray, clearly disabled |
+| M38 | Playlist play button on a playlist that is not playing | Starts from its first song; sidebar marks it as playing |
+| M39 | Playlist play button on the playing playlist | Pauses / resumes; icon and label "Pausar" / "Reproducir playlist" |
+| M40 | Current row while playing, paused, and with "reducir movimiento" | Animated bars / static bars / static bars |
+| M41 | Repeat button cycle | desactivado → toda la lista → una canción → desactivado, distinct look for each |
+| M42 | Repeat "toda la lista" | Next at the last song goes to the first; previous at the first goes to the last; the last song ending starts the first |
+| M43 | Repeat "una canción" | The song restarts when it ends |
+| M44 | Search by title, artist and album with accents, "ñ" and uppercase | Only matching rows, "N de M canciones", real positions kept |
+| M45 | Search with no results, then "Limpiar búsqueda" / Escape / switching playlist | "Sin resultados para «texto»", then the full list again |
+| M46 | Next / previous while a search hides rows | Follow the real list order, even to hidden songs |
+| M47 | Lock screen / notification (phone) or media keys (desktop) | Title, artist, album and cover shown; play, pause, next, previous and seek work |
+| M48 | Delete the playing playlist | Lock screen / media hub controls disappear |
 
 ## 3. Before every push
 

@@ -46,6 +46,8 @@ export interface LoadResult {
 
 export type PlayerErrorCode = "unavailable" | "playback-failed";
 
+export type RepeatMode = "off" | "all" | "one";
+
 export interface PlayerState {
   song: Song | null;
   isPlaying: boolean;
@@ -55,4 +57,5 @@ export interface PlayerState {
   isMuted: boolean;
   hasNext: boolean;
   hasPrevious: boolean;
+  repeatMode: RepeatMode;
 }

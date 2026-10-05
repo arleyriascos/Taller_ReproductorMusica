@@ -263,6 +263,66 @@ describe("Playlist navigation", () => {
     expect(playlist.hasPrevious()).toBe(false);
     expect(playlist.current).toBeNull();
   });
+
+  it("selectFirst and selectLast return null on an empty playlist", () => {
+    const playlist = new Playlist("Vacía");
+    expect(playlist.selectFirst()).toBeNull();
+    expect(playlist.selectLast()).toBeNull();
+    expect(playlist.current).toBeNull();
+    expectValidLinks(playlist);
+  });
+
+  it("selectFirst moves current to the head from the tail", () => {
+    const playlist = playlistOf(a, b, c);
+    playlist.select(nodeAt(playlist, 3));
+    const first = playlist.selectFirst();
+    expect(first).toBe(nodeAt(playlist, 1));
+    expect(playlist.current).toBe(first);
+    expect(first?.prev).toBeNull();
+    expect(playlist.hasPrevious()).toBe(false);
+    expectValidLinks(playlist);
+  });
+
+  it("selectLast moves current to the tail from the head", () => {
+    const playlist = playlistOf(a, b, c);
+    playlist.select(nodeAt(playlist, 1));
+    const last = playlist.selectLast();
+    expect(last).toBe(nodeAt(playlist, 3));
+    expect(playlist.current).toBe(last);
+    expect(last?.next).toBeNull();
+    expect(playlist.hasNext()).toBe(false);
+    expectValidLinks(playlist);
+  });
+
+  it("selectFirst and selectLast work without a previous current", () => {
+    const playlist = playlistOf(a, b);
+    expect(playlist.selectLast()?.value).toBe(b);
+    expect(playlist.current?.value).toBe(b);
+    const fresh = playlistOf(c, d);
+    expect(fresh.selectFirst()?.value).toBe(c);
+    expect(fresh.current?.value).toBe(c);
+  });
+
+  it("selectFirst and selectLast on a single song return the same node", () => {
+    const playlist = playlistOf(a);
+    const first = playlist.selectFirst();
+    expect(playlist.selectLast()).toBe(first);
+    expect(first?.next).toBeNull();
+    expect(first?.prev).toBeNull();
+    expectValidLinks(playlist);
+  });
+
+  it("selecting the edges never makes the list circular or records operations", () => {
+    const playlist = playlistOf(a, b, c);
+    const operations = playlist.history.length;
+    playlist.selectLast();
+    expect(playlist.next()).toBeNull();
+    playlist.selectFirst();
+    expect(playlist.previous()).toBeNull();
+    expect(playlist.history).toHaveLength(operations);
+    expect(titlesOf(playlist)).toEqual(["A", "B", "C"]);
+    expectValidLinks(playlist);
+  });
 });
 
 describe("Playlist reading", () => {

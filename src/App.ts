@@ -26,7 +26,6 @@ export class App {
   readonly #trackList = new TrackListView(App.element("main"));
   readonly #playerBar = new PlayerBarView(App.element("player-bar"));
   readonly #notifications = new NotificationView(App.element("notifications"));
-  #context: Playlist | null = null;
   #isLoading = false;
 
   start(): void {
@@ -47,6 +46,7 @@ export class App {
   private bindTrackList(): void {
     const list = this.#trackList;
     list.onPlay((id, node) => this.run(() => this.play(id, node)));
+    list.onPlayPlaylist((id) => this.run(() => this.playPlaylist(id)));
     list.onRemoveNode((id, node) => this.run(() => this.removeNode(id, node)));
     list.onRemoveFromLibrary((song) => this.run(() => this.removeFromLibrary(song)));
     list.onAddSong((request) => this.run(() => this.addSong(request)));
@@ -61,6 +61,7 @@ export class App {
     bar.onPrevious(() => player.previous());
     bar.onTogglePlay(() => player.togglePlayPause());
     bar.onNext(() => player.next());
+    bar.onCycleRepeat(() => player.cycleRepeatMode());
     bar.onToggleMute(() => player.toggleMute());
     bar.onSeek((seconds) => player.seek(seconds));
     bar.onVolumeChange((volume) => player.setVolume(volume));
@@ -91,16 +92,31 @@ export class App {
 
   private showPlayerState(state: PlayerState): void {
     this.#playerBar.render(state);
-    this.#trackList.setPlayback(this.#context?.current ?? null, state.isPlaying);
-    this.#sidebar.setPlayback(this.#context?.id ?? null, state.isPlaying);
+    const context = this.#player.context;
+    this.#trackList.setPlayback(context, state.isPlaying);
+    this.#sidebar.setPlayback(context?.id ?? null, state.isPlaying);
     document.title = App.documentTitle(state);
   }
 
   private play(playlistId: string, node: Node<Song>): void {
     const playlist = this.#manager.getPlaylist(playlistId);
     if (playlist !== null) {
-      this.#context = playlist;
       this.#player.playFrom(playlist, node);
+    }
+  }
+
+  private playPlaylist(playlistId: string): void {
+    const playlist = this.#manager.getPlaylist(playlistId);
+    if (playlist === null) {
+      return;
+    }
+    if (playlist === this.#player.context) {
+      this.#player.togglePlayPause();
+      return;
+    }
+    const start = App.firstPlayable(playlist);
+    if (start !== null) {
+      this.#player.playFrom(playlist, start);
     }
   }
 
@@ -127,9 +143,8 @@ export class App {
     if (playlist === null) {
       return;
     }
-    if (playlist === this.#context) {
+    if (playlist === this.#player.context) {
       this.#player.clearContext();
-      this.#context = null;
     }
     this.#manager.deletePlaylist(id);
     this.#notifications.show(`Playlist «${playlist.name}» eliminada`, "info");
@@ -155,14 +170,14 @@ export class App {
 
   private removeFromLibrary(song: Song): void {
     this.#manager.removeSongEverywhere(song);
-    if (this.#context !== null) {
+    if (this.#player.context !== null) {
       this.#player.refresh();
     }
     this.#notifications.show(`«${song.title}» se quitó de la biblioteca`, "info");
   }
 
   private refreshIfContext(playlist: Playlist): void {
-    if (playlist === this.#context) {
+    if (playlist === this.#player.context) {
       this.#player.refresh();
     }
   }
@@ -192,6 +207,17 @@ export class App {
       this.#notifications.hideProgress();
     }
     this.render();
+  }
+
+  private static firstPlayable(playlist: Playlist): Node<Song> | null {
+    let head: Node<Song> | null = null;
+    for (const node of playlist.nodes()) {
+      head ??= node;
+      if (node.value.isAvailable()) {
+        return node;
+      }
+    }
+    return head;
   }
 
   private static place(playlist: Playlist, song: Song, placement: SongPlacement): number {

@@ -1,7 +1,7 @@
 import { formatElapsed, formatTime } from "./format";
-import { createIcon, createIconButton, setButtonIcon } from "./icons";
+import { createIconButton, setButtonIcon, setCover, type IconName } from "./icons";
 import type { Song } from "./Song";
-import type { PlayerState } from "./types";
+import type { PlayerState, RepeatMode } from "./types";
 
 type ActionHandler = () => void;
 type ValueHandler = (value: number) => void;
@@ -9,13 +9,20 @@ type ValueHandler = (value: number) => void;
 const EMPTY_TITLE = "Elige una canción";
 const UNKNOWN_ARTIST = "Artista desconocido";
 
+const REPEAT_BUTTONS: Record<RepeatMode, { icon: IconName; label: string }> = {
+  off: { icon: "repeat", label: "Repetir: desactivado" },
+  all: { icon: "repeat", label: "Repetir: toda la lista" },
+  one: { icon: "repeatOne", label: "Repetir: una canción" },
+};
+
 export class PlayerBarView {
   readonly #cover = Object.assign(document.createElement("div"), { className: "cover player-cover" });
   readonly #title = Object.assign(document.createElement("p"), { className: "player-title" });
   readonly #artist = Object.assign(document.createElement("p"), { className: "player-artist" });
   readonly #previous = createIconButton("previous", "Anterior", "icon-button player-step");
-  readonly #toggle = createIconButton("play", "Reproducir", "icon-button player-toggle");
+  readonly #toggle = createIconButton("play", "Reproducir", "icon-button play-button player-toggle");
   readonly #next = createIconButton("next", "Siguiente", "icon-button player-step");
+  readonly #repeat = createIconButton("repeat", REPEAT_BUTTONS.off.label, "icon-button player-repeat");
   readonly #elapsed = Object.assign(document.createElement("span"), { className: "player-time" });
   readonly #total = Object.assign(document.createElement("span"), { className: "player-time" });
   readonly #seek = PlayerBarView.createRange("Progreso de la canción", "player-seek");
@@ -23,9 +30,11 @@ export class PlayerBarView {
   readonly #volume = PlayerBarView.createRange("Volumen", "player-volume-range");
   #isSeeking = false;
   #coverUrl: string | null | undefined;
+  #repeatMode: RepeatMode | null = null;
   #previousHandler: ActionHandler = () => {};
   #toggleHandler: ActionHandler = () => {};
   #nextHandler: ActionHandler = () => {};
+  #repeatHandler: ActionHandler = () => {};
   #muteHandler: ActionHandler = () => {};
   #seekHandler: ValueHandler = () => {};
   #volumeHandler: ValueHandler = () => {};
@@ -48,6 +57,10 @@ export class PlayerBarView {
     this.#nextHandler = handler;
   }
 
+  onCycleRepeat(handler: ActionHandler): void {
+    this.#repeatHandler = handler;
+  }
+
   onToggleMute(handler: ActionHandler): void {
     this.#muteHandler = handler;
   }
@@ -63,6 +76,7 @@ export class PlayerBarView {
   render(state: PlayerState): void {
     this.renderSong(state.song);
     this.renderControls(state);
+    this.renderRepeat(state.repeatMode);
     this.renderVolume(state.volume, state.isMuted);
     this.updateProgress(state.currentTime, state.duration);
   }
@@ -85,16 +99,20 @@ export class PlayerBarView {
   }
 
   private renderCover(url: string | null): void {
-    if (url === this.#coverUrl) {
+    if (url !== this.#coverUrl) {
+      this.#coverUrl = url;
+      setCover(this.#cover, url);
+    }
+  }
+
+  private renderRepeat(mode: RepeatMode): void {
+    if (mode === this.#repeatMode) {
       return;
     }
-    this.#coverUrl = url;
-    this.#cover.classList.toggle("has-image", url !== null);
-    if (url === null) {
-      this.#cover.replaceChildren(createIcon("music"));
-    } else {
-      this.#cover.replaceChildren(Object.assign(document.createElement("img"), { src: url, alt: "" }));
-    }
+    this.#repeatMode = mode;
+    const { icon, label } = REPEAT_BUTTONS[mode];
+    setButtonIcon(this.#repeat, icon, label);
+    this.#repeat.classList.toggle("is-active", mode !== "off");
   }
 
   private renderControls(state: PlayerState): void {
@@ -133,7 +151,7 @@ export class PlayerBarView {
     const center = Object.assign(document.createElement("div"), { className: "player-center" });
     const controls = Object.assign(document.createElement("div"), { className: "player-controls" });
     const timeline = Object.assign(document.createElement("div"), { className: "player-timeline" });
-    controls.append(this.#previous, this.#toggle, this.#next);
+    controls.append(this.#previous, this.#toggle, this.#next, this.#repeat);
     timeline.append(this.#elapsed, this.#seek, this.#total);
     center.append(controls, timeline);
     return center;
@@ -149,6 +167,7 @@ export class PlayerBarView {
     this.#previous.addEventListener("click", () => this.#previousHandler());
     this.#toggle.addEventListener("click", () => this.#toggleHandler());
     this.#next.addEventListener("click", () => this.#nextHandler());
+    this.#repeat.addEventListener("click", () => this.#repeatHandler());
     this.#mute.addEventListener("click", () => this.#muteHandler());
     this.#volume.addEventListener("input", () => this.#volumeHandler(this.#volume.valueAsNumber));
     this.#seek.addEventListener("input", () => this.previewSeek());

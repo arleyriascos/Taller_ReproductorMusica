@@ -99,7 +99,7 @@ export class SidebarView {
   private createNavigation(): HTMLElement {
     const nav = Object.assign(document.createElement("nav"), { className: "sidebar-nav" });
     nav.setAttribute("aria-label", "Tu música y playlists");
-    const newPlaylist = createLabeledButton("plus", "Nueva playlist", "button button-ghost new-playlist");
+    const newPlaylist = createLabeledButton("plus", "Nueva playlist", "button button-ghost sidebar-button new-playlist");
     newPlaylist.addEventListener("click", () => this.openCreateDialog());
     nav.append(
       SidebarView.createHeading("Tu música"),
@@ -113,8 +113,8 @@ export class SidebarView {
 
   private createLoadSection(): HTMLDivElement {
     const section = Object.assign(document.createElement("div"), { className: "sidebar-load" });
-    const files = createLabeledButton("upload", "Cargar canciones", "button button-primary");
-    const folder = createLabeledButton("folder", "Cargar carpeta", "button button-secondary");
+    const files = createLabeledButton("upload", "Cargar canciones", "button button-primary sidebar-button");
+    const folder = createLabeledButton("folder", "Cargar carpeta", "button button-secondary sidebar-button");
     files.addEventListener("click", () => this.openPicker("files"));
     folder.addEventListener("click", () => this.openPicker("folder"));
     this.#loadButtons.push(files, folder);
@@ -198,12 +198,22 @@ export class SidebarView {
     }
     button.append(
       createIcon(icon),
-      Object.assign(document.createElement("span"), { className: "nav-name", textContent: playlist.name }),
+      SidebarView.createName(playlist),
       Object.assign(document.createElement("span"), { className: "nav-playing", textContent: "En reproducción" }),
       Object.assign(document.createElement("span"), { className: "nav-count", textContent: String(playlist.length) }),
     );
     item.append(button);
     return item;
+  }
+
+  private static createName(playlist: Playlist): HTMLSpanElement {
+    const name = Object.assign(document.createElement("span"), { className: "nav-name", textContent: playlist.name });
+    if (playlist.isLibrary) {
+      name.classList.add("nav-name-fixed");
+    } else {
+      name.title = playlist.name;
+    }
+    return name;
   }
 
   private static createBrand(): HTMLDivElement {

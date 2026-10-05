@@ -1,21 +1,25 @@
 import type { Node } from "./Node";
 import type { Playlist } from "./Playlist";
 import type { Song } from "./Song";
-import type { PlayerErrorCode, PlayerState } from "./types";
+import type { PlayerErrorCode, PlayerState, RepeatMode } from "./types";
 
 type StateListener = (state: PlayerState) => void;
 type ProgressListener = (currentTime: number, duration: number) => void;
 type ErrorListener = (code: PlayerErrorCode, song: Song | null) => void;
 
 const DEFAULT_VOLUME = 0.8;
+const SEEK_STEP_SECONDS = 10;
+const NEXT_REPEAT_MODE: Record<RepeatMode, RepeatMode> = { off: "all", all: "one", one: "off" };
 
 export class MusicPlayer {
   private static instance: MusicPlayer | null = null;
   readonly #audio: HTMLAudioElement;
+  readonly #mediaSession: MediaSession | null = "mediaSession" in navigator ? navigator.mediaSession : null;
   #context: Playlist | null = null;
   #loadedSong: Song | null = null;
   #volume = DEFAULT_VOLUME;
   #muted = false;
+  #repeatMode: RepeatMode = "off";
   #stateListener: StateListener | null = null;
   #progressListener: ProgressListener | null = null;
   #errorListener: ErrorListener | null = null;
@@ -25,11 +29,16 @@ export class MusicPlayer {
     this.#audio.preload = "metadata";
     this.applyVolume();
     this.registerEvents();
+    this.registerMediaActions();
   }
 
   static getInstance(): MusicPlayer {
     MusicPlayer.instance ??= new MusicPlayer();
     return MusicPlayer.instance;
+  }
+
+  get context(): Playlist | null {
+    return this.#context;
   }
 
   onStateChange(callback: StateListener): void {
@@ -45,16 +54,16 @@ export class MusicPlayer {
   }
 
   getState(): PlayerState {
-    const context = this.#context;
     return {
-      song: context?.current?.value ?? null,
+      song: this.#context?.current?.value ?? null,
       isPlaying: !this.#audio.paused,
       currentTime: this.#audio.currentTime,
       duration: this.duration(),
       volume: this.#volume,
       isMuted: this.#muted,
-      hasNext: context?.hasNext() ?? false,
-      hasPrevious: context?.hasPrevious() ?? false,
+      hasNext: this.canMove((context) => context.hasNext()),
+      hasPrevious: this.canMove((context) => context.hasPrevious()),
+      repeatMode: this.#repeatMode,
     };
   }
 
@@ -78,11 +87,11 @@ export class MusicPlayer {
   }
 
   next(): void {
-    this.playNode(this.#context?.next() ?? null);
+    this.playNode(this.move((context) => context.next(), (context) => context.selectFirst()));
   }
 
   previous(): void {
-    this.playNode(this.#context?.previous() ?? null);
+    this.playNode(this.move((context) => context.previous(), (context) => context.selectLast()));
   }
 
   seek(seconds: number): void {
@@ -107,6 +116,15 @@ export class MusicPlayer {
   toggleMute(): void {
     this.#muted = !this.#muted;
     this.applyVolume();
+  }
+
+  setRepeatMode(mode: RepeatMode): void {
+    this.#repeatMode = mode;
+    this.notifyState();
+  }
+
+  cycleRepeatMode(): void {
+    this.setRepeatMode(NEXT_REPEAT_MODE[this.#repeatMode]);
   }
 
   refresh(): void {
@@ -141,10 +159,58 @@ export class MusicPlayer {
     for (const type of ["play", "pause", "volumechange"] as const) {
       audio.addEventListener(type, () => this.notifyState());
     }
+    for (const type of ["play", "pause", "seeking"] as const) {
+      audio.addEventListener(type, () => this.syncMediaSession());
+    }
     audio.addEventListener("ended", () => this.handleEnded());
     audio.addEventListener("loadedmetadata", () => this.handleMetadata());
     audio.addEventListener("timeupdate", () => this.notifyProgress());
     audio.addEventListener("error", () => this.handleSourceError());
+  }
+
+  private registerMediaActions(): void {
+    this.setMediaAction("play", () => this.setPlaying(true));
+    this.setMediaAction("pause", () => this.setPlaying(false));
+    this.setMediaAction("previoustrack", () => this.previous());
+    this.setMediaAction("nexttrack", () => this.next());
+    this.setMediaAction("seekto", (details) => this.seek(details.seekTime ?? Number.NaN));
+    this.setMediaAction("seekbackward", (details) => this.seekBy(-(details.seekOffset ?? SEEK_STEP_SECONDS)));
+    this.setMediaAction("seekforward", (details) => this.seekBy(details.seekOffset ?? SEEK_STEP_SECONDS));
+  }
+
+  private setMediaAction(action: MediaSessionAction, handler: MediaSessionActionHandler): void {
+    try {
+      this.#mediaSession?.setActionHandler(action, handler);
+    } catch {
+      return;
+    }
+  }
+
+  private setPlaying(shouldPlay: boolean): void {
+    if (this.#audio.paused === shouldPlay) {
+      this.togglePlayPause();
+    }
+  }
+
+  private seekBy(offset: number): void {
+    this.seek(this.#audio.currentTime + offset);
+  }
+
+  private canMove(step: (context: Playlist) => boolean): boolean {
+    const context = this.#context;
+    return context !== null && (step(context) || this.wrapsAround(context));
+  }
+
+  private move(step: (context: Playlist) => Node<Song> | null, wrap: (context: Playlist) => Node<Song> | null): Node<Song> | null {
+    const context = this.#context;
+    if (context === null) {
+      return null;
+    }
+    return step(context) ?? (this.wrapsAround(context) ? wrap(context) : null);
+  }
+
+  private wrapsAround(context: Playlist): boolean {
+    return this.#repeatMode === "all" && context.length > 0;
   }
 
   private playNode(node: Node<Song> | null): void {
@@ -167,6 +233,7 @@ export class MusicPlayer {
     }
     this.#loadedSong = song;
     this.#audio.src = source;
+    this.showMediaMetadata(song);
     this.notifyState();
     return true;
   }
@@ -176,11 +243,17 @@ export class MusicPlayer {
     this.#audio.removeAttribute("src");
     this.#audio.load();
     this.#loadedSong = null;
+    this.clearMediaSession();
     this.notifyState();
   }
 
   private startPlayback(): void {
     this.#audio.play().catch((error: unknown) => this.handlePlayRejection(error));
+  }
+
+  private restart(): void {
+    this.#audio.currentTime = 0;
+    this.startPlayback();
   }
 
   private handlePlayRejection(error: unknown): void {
@@ -192,7 +265,11 @@ export class MusicPlayer {
   }
 
   private handleEnded(): void {
-    if (this.#context?.hasNext() === true) {
+    if (this.#repeatMode === "one") {
+      this.restart();
+      return;
+    }
+    if (this.canMove((context) => context.hasNext())) {
       this.next();
       return;
     }
@@ -203,6 +280,7 @@ export class MusicPlayer {
 
   private handleMetadata(): void {
     this.#loadedSong?.updateDuration(this.#audio.duration);
+    this.syncMediaSession();
     this.notifyState();
   }
 
@@ -210,6 +288,42 @@ export class MusicPlayer {
     if (this.#audio.hasAttribute("src")) {
       this.#audio.pause();
       this.#errorListener?.("playback-failed", this.#loadedSong);
+    }
+  }
+
+  private showMediaMetadata(song: Song): void {
+    if (this.#mediaSession === null) {
+      return;
+    }
+    const artwork = song.coverUrl === null ? [] : [{ src: song.coverUrl }];
+    this.#mediaSession.metadata = new MediaMetadata({ title: song.title, artist: song.artist, album: song.album, artwork });
+  }
+
+  private syncMediaSession(): void {
+    if (this.#mediaSession === null || this.#loadedSong === null) {
+      return;
+    }
+    this.#mediaSession.playbackState = this.#audio.paused ? "paused" : "playing";
+    const duration = this.#audio.duration;
+    if (Number.isFinite(duration) && duration > 0) {
+      const position = MusicPlayer.clamp(this.#audio.currentTime, 0, duration);
+      this.setMediaPosition({ duration, position, playbackRate: this.#audio.playbackRate || 1 });
+    }
+  }
+
+  private clearMediaSession(): void {
+    if (this.#mediaSession === null) {
+      return;
+    }
+    this.#mediaSession.metadata = null;
+    this.#mediaSession.playbackState = "none";
+    this.setMediaPosition();
+  }
+
+  private setMediaPosition(state?: MediaPositionState): void {
+    const session = this.#mediaSession;
+    if (session !== null && "setPositionState" in session) {
+      session.setPositionState(state);
     }
   }
 

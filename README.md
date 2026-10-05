@@ -20,7 +20,11 @@ Despliegue: https://musongs.vercel.app/
 - **Agregar una canción al inicio, al final o en cualquier posición**: desde el botón «+» de una fila (eliges la playlist de destino) o desde «Agregar canción» en la cabecera de una playlist (eliges la canción de la biblioteca). Las posiciones fuera de rango se rechazan con un mensaje.
 - **Quitar canciones**: en una playlist se quita solo esa aparición; en la biblioteca, tras confirmar, se quita de la biblioteca y de todas las playlists.
 - **Reproducción real** en el navegador: reproducir y pausar, siguiente y anterior (siguen los enlaces `next` y `prev` del nodo actual y se desactivan en los extremos), avance automático al terminar una canción, barra de progreso para saltar, tiempo actual y duración, volumen y silencio.
-- La canción actual se resalta en la lista que se está reproduciendo, y el título de la pestaña muestra lo que suena.
+- **Botón para reproducir una playlist** (también la Biblioteca): empieza desde la primera canción; si esa lista ya está sonando, pausa y reanuda.
+- **Repetir**: desactivado, toda la lista (al llegar al final vuelve a la primera canción, y «anterior» en la primera va a la última) o una canción (se repite al terminar). La lista no se vuelve circular: el reproductor decide cuándo saltar al otro extremo.
+- **Buscar en la lista visible** por título, artista o álbum, sin importar mayúsculas ni tildes (la «ñ» cuenta como letra distinta). La búsqueda solo oculta filas: no cambia la lista ni el orden de «siguiente» y «anterior».
+- **Controles del sistema** (Media Session): en el celular la pantalla de bloqueo y la notificación muestran la canción con su carátula y permiten pausar, cambiar de canción y adelantar; en el computador funcionan las teclas multimedia.
+- La canción actual se resalta en la lista que se está reproduciendo con unas barras animadas, y el título de la pestaña muestra lo que suena.
 - Diseño adaptable (escritorio, tableta y móvil con menú lateral), tema claro u oscuro según el sistema, uso completo con teclado y respeto por «reducir movimiento».
 
 ## Tecnologías

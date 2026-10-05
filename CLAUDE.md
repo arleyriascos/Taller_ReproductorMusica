@@ -93,12 +93,13 @@ Taller_ReproductorMusica/
     ├── TrackedLinkedList.test.ts
     ├── Playlist.test.ts
     ├── PlaylistManager.test.ts
-    └── SongLoader.test.ts
+    ├── SongLoader.test.ts
+    └── format.test.ts
 ```
 
 `types.ts` holds only data shapes without behavior (`ListOperation`, `SongDetails`, `LoadedTrack`, `StoredState`).
-`icons.ts` holds the SVG string constants and the only helpers allowed to turn them into elements (`createIcon`, `createIconButton`, `createLabeledButton`, `setButtonIcon`); this is the only place where `innerHTML` is used, and only with those constants.
-`format.ts` holds only pure formatting functions (`formatTime`, `formatElapsed`, `formatTotal`, `countLabel`).
+`icons.ts` holds the SVG string constants and the only helpers allowed to turn them into elements (`createIcon`, `createIconButton`, `createLabeledButton`, `setButtonIcon`), plus `setCover`, the shared cover renderer (cover image or generic music icon) used by `PlayerBarView` and `TrackListView`; this is the only place where `innerHTML` is used, and only with those constants.
+`format.ts` holds only pure formatting functions (`formatTime`, `formatElapsed`, `formatTotal`, `countLabel`, `comparableText`); `format.test.ts` tests every one of them.
 `DialogView.ts` builds the native `<dialog>` forms shared by `SidebarView` and `TrackListView`.
 No other folders. `public/` only if a static asset becomes necessary, and only after asking.
 

@@ -1,3 +1,4 @@
+import { comparableText } from "./format";
 import { Playlist } from "./Playlist";
 import { Song } from "./Song";
 import type { AddTracksResult, LoadedTrack, PlaylistNameIssue } from "./types";
@@ -116,12 +117,12 @@ export class PlaylistManager {
   }
 
   private isNameTaken(name: string, exceptId?: string): boolean {
-    const key = PlaylistManager.comparable(name);
-    if (key === PlaylistManager.comparable(LIBRARY_NAME)) {
+    const key = comparableText(name);
+    if (key === comparableText(LIBRARY_NAME)) {
       return true;
     }
     for (const playlist of this.#playlists.values()) {
-      if (playlist.id !== exceptId && PlaylistManager.comparable(playlist.name) === key) {
+      if (playlist.id !== exceptId && comparableText(playlist.name) === key) {
         return true;
       }
     }
@@ -155,14 +156,5 @@ export class PlaylistManager {
   private static copyName(name: string, attempt: number): string {
     const suffix = attempt === 1 ? " (copia)" : ` (copia ${attempt})`;
     return name.slice(0, MAX_NAME_LENGTH - suffix.length).trimEnd() + suffix;
-  }
-
-  private static comparable(name: string): string {
-    return name
-      .trim()
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/(?<!n)̃|[̀-̂̄-ͯ]/g, "")
-      .normalize("NFC");
   }
 }

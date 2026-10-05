@@ -1,6 +1,6 @@
 import { DialogView } from "./DialogView";
-import { countLabel, formatTime, formatTotal } from "./format";
-import { createIcon, createIconButton, createLabeledButton } from "./icons";
+import { comparableText, countLabel, formatTime, formatTotal } from "./format";
+import { createIcon, createIconButton, createLabeledButton, setButtonIcon, setCover } from "./icons";
 import type { Node } from "./Node";
 import type { Playlist } from "./Playlist";
 import type { LoadKind } from "./SidebarView";
@@ -28,6 +28,7 @@ interface FocusMemory {
 }
 
 type NodeHandler = (playlistId: string, node: Node<Song>) => void;
+type PlaylistHandler = (playlistId: string) => void;
 type RenameHandler = (playlistId: string, name: string) => PlaylistNameIssue | null;
 
 const UNKNOWN_ARTIST = "Artista desconocido";
@@ -37,7 +38,15 @@ const EMPTY_LIBRARY = "Tu biblioteca está vacía. Carga canciones primero.";
 export class TrackListView {
   readonly #root: HTMLElement;
   readonly #header = Object.assign(document.createElement("header"), { className: "list-header" });
+  readonly #eyebrow = Object.assign(document.createElement("p"), { className: "list-eyebrow" });
   readonly #title = Object.assign(document.createElement("h1"), { className: "list-title", tabIndex: -1 });
+  readonly #meta = Object.assign(document.createElement("p"), { className: "list-meta" });
+  readonly #actions = Object.assign(document.createElement("div"), { className: "list-actions" });
+  readonly #playButton = createIconButton("play", "Reproducir playlist", "icon-button play-button list-play");
+  readonly #search = TrackListView.createSearchInput();
+  readonly #searchField = Object.assign(document.createElement("label"), { className: "search-field" });
+  readonly #noResults = Object.assign(document.createElement("section"), { className: "search-empty" });
+  readonly #noResultsText = Object.assign(document.createElement("p"), { className: "search-empty-text" });
   readonly #content = Object.assign(document.createElement("div"), { className: "list-content" });
   readonly #rowNodes = new WeakMap<Element, Node<Song>>();
   readonly #rowsByNode = new Map<Node<Song>, HTMLLIElement>();
@@ -66,21 +75,24 @@ export class TrackListView {
   readonly #destinationField: HTMLLabelElement;
   readonly #positionField: HTMLLabelElement;
   #data: TrackListData | null = null;
-  #currentNode: Node<Song> | null = null;
+  #context: Playlist | null = null;
   #isPlaying = false;
+  #query = "";
   #pendingSong: Song | null = null;
   #addTarget: Playlist | null = null;
   #pendingFocus: FocusMemory | null = null;
   #playHandler: NodeHandler = () => {};
+  #playPlaylistHandler: PlaylistHandler = () => {};
   #removeNodeHandler: NodeHandler = () => {};
   #removeSongHandler: (song: Song) => void = () => {};
   #addHandler: (request: AddSongRequest) => void = () => {};
   #renameHandler: RenameHandler = () => null;
-  #deleteHandler: (playlistId: string) => void = () => {};
+  #deleteHandler: PlaylistHandler = () => {};
   #loadHandler: (kind: LoadKind) => void = () => {};
 
   constructor(root: HTMLElement) {
     this.#root = root;
+    this.buildHeader();
     this.#root.append(this.#header, this.#content);
     this.#songField = this.#addDialog.addField("Canción", this.#songSelect);
     this.#destinationField = this.#addDialog.addField("Playlist de destino", this.#destinationSelect);
@@ -91,6 +103,10 @@ export class TrackListView {
 
   onPlay(handler: NodeHandler): void {
     this.#playHandler = handler;
+  }
+
+  onPlayPlaylist(handler: PlaylistHandler): void {
+    this.#playPlaylistHandler = handler;
   }
 
   onRemoveNode(handler: NodeHandler): void {
@@ -109,7 +125,7 @@ export class TrackListView {
     this.#renameHandler = handler;
   }
 
-  onDeletePlaylist(handler: (playlistId: string) => void): void {
+  onDeletePlaylist(handler: PlaylistHandler): void {
     this.#deleteHandler = handler;
   }
 
@@ -121,10 +137,14 @@ export class TrackListView {
     const focus = this.captureFocus();
     const switched = this.#data?.playlist !== data.playlist;
     this.#data = data;
+    if (switched) {
+      this.resetSearch();
+    }
     this.renderHeader(data.playlist);
     this.renderContent(data);
+    this.applyFilter();
     this.applyPlayback();
-    if (focus !== null) {
+    if (focus !== null && TrackListView.isFocusLost()) {
       this.restoreFocus(focus);
     }
     if (switched) {
@@ -132,37 +152,49 @@ export class TrackListView {
     }
   }
 
-  setPlayback(currentNode: Node<Song> | null, isPlaying: boolean): void {
-    this.#currentNode = currentNode;
+  setPlayback(context: Playlist | null, isPlaying: boolean): void {
+    this.#context = context;
     this.#isPlaying = isPlaying;
     this.applyPlayback();
   }
 
   private applyPlayback(): void {
+    const currentNode = this.#context?.current ?? null;
     for (const [node, row] of this.#rowsByNode) {
-      const isCurrent = node === this.#currentNode;
+      const isCurrent = node === currentNode;
       row.classList.toggle("is-current", isCurrent);
       row.classList.toggle("is-playing", isCurrent && this.#isPlaying);
       row.toggleAttribute("aria-current", isCurrent);
     }
+    this.renderPlayButton();
+  }
+
+  private renderPlayButton(): void {
+    const playlist = this.#data?.playlist ?? null;
+    const isPlayingThis = playlist !== null && playlist === this.#context && this.#isPlaying;
+    setButtonIcon(this.#playButton, isPlayingThis ? "pause" : "play", isPlayingThis ? "Pausar" : "Reproducir playlist");
+    this.#playButton.disabled = playlist === null || playlist.length === 0;
+  }
+
+  private buildHeader(): void {
+    const heading = Object.assign(document.createElement("div"), { className: "list-heading" });
+    const toolbar = Object.assign(document.createElement("div"), { className: "list-toolbar" });
+    const clear = createLabeledButton("close", "Limpiar búsqueda", "button button-secondary");
+    this.#playButton.dataset.action = "play-playlist";
+    this.#meta.setAttribute("aria-live", "polite");
+    clear.dataset.action = "clear-search";
+    heading.append(this.#eyebrow, this.#title, this.#meta);
+    this.#searchField.append(createIcon("search"), this.#search);
+    toolbar.append(this.#playButton, this.#searchField);
+    this.#noResults.append(this.#noResultsText, clear);
+    this.#header.append(heading, this.#actions, toolbar);
   }
 
   private renderHeader(playlist: Playlist): void {
-    const eyebrow = Object.assign(document.createElement("p"), {
-      className: "list-eyebrow",
-      textContent: playlist.isLibrary ? "Tu música" : "Playlist",
-    });
+    this.#eyebrow.textContent = playlist.isLibrary ? "Tu música" : "Playlist";
     this.#title.textContent = playlist.name;
-    const meta = Object.assign(document.createElement("p"), {
-      className: "list-meta",
-      textContent: TrackListView.describe(playlist),
-    });
-    const text = Object.assign(document.createElement("div"), { className: "list-heading" });
-    text.append(eyebrow, this.#title, meta);
-    this.#header.replaceChildren(text);
-    if (!playlist.isLibrary) {
-      this.#header.append(TrackListView.createPlaylistActions());
-    }
+    this.#actions.replaceChildren(...(playlist.isLibrary ? [] : TrackListView.createPlaylistButtons()));
+    this.#searchField.hidden = playlist.length === 0;
   }
 
   private renderContent(data: TrackListData): void {
@@ -178,7 +210,62 @@ export class TrackListView {
       list.append(this.createRow(node, position, data.playlist.isLibrary));
       position++;
     }
-    this.#content.replaceChildren(TrackListView.createColumns(), list);
+    this.#content.replaceChildren(TrackListView.createColumns(), list, this.#noResults);
+  }
+
+  private applyFilter(): void {
+    const playlist = this.#data?.playlist;
+    if (playlist === undefined) {
+      return;
+    }
+    let matches = 0;
+    for (const node of playlist.nodes()) {
+      const isMatch = this.matchesQuery(node.value);
+      const row = this.#rowsByNode.get(node);
+      if (row !== undefined) {
+        row.hidden = !isMatch;
+      }
+      matches += isMatch ? 1 : 0;
+    }
+    this.showFilterResult(playlist, matches);
+  }
+
+  private matchesQuery(song: Song): boolean {
+    const query = this.#query;
+    return query === "" || [song.title, song.artist, song.album].some((field) => comparableText(field).includes(query));
+  }
+
+  private showFilterResult(playlist: Playlist, matches: number): void {
+    const isFiltering = this.#query !== "";
+    const total = countLabel(playlist.length, "canción", "canciones");
+    const hasNoResults = isFiltering && matches === 0 && playlist.length > 0;
+    this.#meta.textContent = isFiltering ? `${matches} de ${total}` : TrackListView.describe(playlist);
+    this.#noResultsText.textContent = `Sin resultados para «${this.#search.value.trim()}»`;
+    this.#noResults.hidden = !hasNoResults;
+    this.#content.classList.toggle("has-no-results", hasNoResults);
+  }
+
+  private updateSearch(): void {
+    this.#query = comparableText(this.#search.value);
+    this.applyFilter();
+  }
+
+  private resetSearch(): void {
+    this.#search.value = "";
+    this.#query = "";
+  }
+
+  private clearSearch(): void {
+    this.resetSearch();
+    this.applyFilter();
+    this.#search.focus();
+  }
+
+  private handleSearchKey(event: KeyboardEvent): void {
+    if (event.key === "Escape" && this.#search.value !== "") {
+      event.preventDefault();
+      this.clearSearch();
+    }
   }
 
   private createRow(node: Node<Song>, position: number, isLibrary: boolean): HTMLLIElement {
@@ -203,6 +290,8 @@ export class TrackListView {
 
   private registerEvents(): void {
     this.#root.addEventListener("click", (event) => this.handleClick(event));
+    this.#search.addEventListener("input", () => this.updateSearch());
+    this.#search.addEventListener("keydown", (event) => this.handleSearchKey(event));
     this.#destinationSelect.addEventListener("change", () => this.updatePositionLimit());
     this.#placementGroup.addEventListener("change", () => this.updatePositionVisibility());
   }
@@ -236,7 +325,11 @@ export class TrackListView {
   }
 
   private handleViewAction(action: string, playlist: Playlist): void {
-    if (action === "add-song") {
+    if (action === "play-playlist") {
+      this.#playPlaylistHandler(playlist.id);
+    } else if (action === "clear-search") {
+      this.clearSearch();
+    } else if (action === "add-song") {
       this.openAddToPlaylist(playlist);
     } else if (action === "rename") {
       this.openRename(playlist);
@@ -441,7 +534,7 @@ export class TrackListView {
   private restoreFocus(memory: FocusMemory): void {
     for (const node of memory.nodes) {
       const row = this.#rowsByNode.get(node);
-      if (row !== undefined) {
+      if (row !== undefined && !row.hidden) {
         (row.querySelector<HTMLElement>(`[data-action="${memory.action}"]`) ?? row.querySelector<HTMLElement>("button"))?.focus();
         return;
       }
@@ -453,10 +546,14 @@ export class TrackListView {
   private restorePendingFocus(): void {
     const memory = this.#pendingFocus;
     this.#pendingFocus = null;
-    const active = document.activeElement;
-    if (memory !== null && (active === null || active === document.body)) {
+    if (memory !== null && TrackListView.isFocusLost()) {
       this.restoreFocus(memory);
     }
+  }
+
+  private static isFocusLost(): boolean {
+    const active = document.activeElement;
+    return active === null || active === document.body;
   }
 
   private static describe(playlist: Playlist): string {
@@ -464,16 +561,14 @@ export class TrackListView {
     return playlist.length === 0 ? count : `${count} · ${formatTotal(playlist.totalDuration())}`;
   }
 
-  private static createPlaylistActions(): HTMLDivElement {
-    const actions = Object.assign(document.createElement("div"), { className: "list-actions" });
+  private static createPlaylistButtons(): HTMLButtonElement[] {
     const add = createLabeledButton("plus", "Agregar canción", "button button-primary");
     const rename = createLabeledButton("edit", "Renombrar", "button button-secondary");
     const remove = createLabeledButton("trash", "Eliminar playlist", "button button-ghost button-ghost-danger");
     add.dataset.action = "add-song";
     rename.dataset.action = "rename";
     remove.dataset.action = "delete-playlist";
-    actions.append(add, rename, remove);
-    return actions;
+    return [add, rename, remove];
   }
 
   private static createEmptyState(data: TrackListData): HTMLElement {
@@ -530,12 +625,7 @@ export class TrackListView {
 
   private static createCover(song: Song): HTMLSpanElement {
     const cover = Object.assign(document.createElement("span"), { className: "cover track-cover" });
-    if (song.coverUrl === null) {
-      cover.append(createIcon("music"));
-    } else {
-      cover.classList.add("has-image");
-      cover.append(Object.assign(document.createElement("img"), { src: song.coverUrl, alt: "", loading: "lazy" }));
-    }
+    setCover(cover, song.coverUrl);
     return cover;
   }
 
@@ -558,6 +648,18 @@ export class TrackListView {
     remove.dataset.action = "remove";
     actions.append(add, remove);
     return actions;
+  }
+
+  private static createSearchInput(): HTMLInputElement {
+    const input = Object.assign(document.createElement("input"), {
+      type: "search",
+      className: "text-input search-input",
+      placeholder: "Buscar en esta lista",
+      autocomplete: "off",
+      spellcheck: false,
+    });
+    input.setAttribute("aria-label", "Buscar en esta lista");
+    return input;
   }
 
   private static createPlacementGroup(): HTMLFieldSetElement {
