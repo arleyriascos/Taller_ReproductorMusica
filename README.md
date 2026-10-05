@@ -8,7 +8,7 @@ Proyecto del **Taller Reproductor de Música** del curso **Estructuras de Datos*
 
 ## Estado
 
-Versión completa de la entrega: reproductor, playlists, columna derecha con «Sonando» y «Estructura», mover canciones, duplicar playlists y persistencia local. Quedan como trabajo futuro «Explorar» con Audius, los atajos de teclado y el arrastrar y soltar.
+Versión completa de la entrega: reproductor, playlists, columna derecha con «Sonando» y «Estructura», arrastrar y soltar, columnas redimensionables, modo aleatorio sobre la lista doblemente enlazada, «Explorar» con Audius, atajos de teclado y persistencia local.
 
 Despliegue: https://musongs.vercel.app/
 
@@ -32,6 +32,13 @@ Despliegue: https://musongs.vercel.app/
 - **Panel «Estructura»**: muestra en vivo la lista doblemente enlazada de la playlist que estás viendo. Cada canción aparece como un nodo con su índice, sus enlaces `prev` y `next` y las marcas `head`, `tail` y `current`; el resumen indica `length`, `head` y `tail`. Al agregar, mover o quitar una canción, el recuadro «Última operación» la muestra como código (`append()`, `prepend()`, `insert(i)`, `removeNode()`…) y con una frase como «Se insertó «Brisa» entre «Aurora» y «Cometa»», y los nodos cuyos enlaces cambiaron se iluminan un instante. Con «siguiente» y «anterior» se ve cómo `current` avanza por los enlaces. En listas largas se muestran 15 nodos antes y 15 después del actual. Tocar un nodo lo reproduce. Es la segunda pestaña de la columna derecha: en el computador está visible; en tableta y celular se abre con el botón del reproductor.
 - **Controles del sistema** (Media Session): en el celular la pantalla de bloqueo y la notificación muestran la canción con su carátula y permiten pausar, cambiar de canción y adelantar; en el computador funcionan las teclas multimedia.
 - La canción actual se resalta en la lista que se está reproduciendo con unas barras animadas, y el título de la pestaña muestra lo que suena.
+- **Saltar canciones no disponibles**: «siguiente», «anterior» y el avance automático siguen los enlaces hasta la primera canción disponible (con «repetir toda la lista» dan la vuelta, como máximo una vez); si no hay ninguna, la reproducción se detiene.
+- **Arrastrar y soltar**: cada fila tiene un asa «Arrastrar para mover» (con el mouse o con una pulsación larga de 300 ms en pantallas táctiles) para cambiar su posición con una línea que marca el destino, desplazamiento automático en los bordes y cancelación con Escape. Arrastrar una fila sobre una playlist del menú lateral la agrega al final. También se pueden soltar archivos o carpetas del computador sobre la lista: en la Biblioteca se insertan en el lugar donde sueltas, y en una playlist además se agregan al final de la Biblioteca. Los botones «Subir» y «Bajar» siguen siendo la alternativa con teclado. No funciona mientras hay una búsqueda activa ni en «Explorar».
+- **Columnas redimensionables** (escritorio, desde 1100 px): separadores entre el menú lateral, la lista y la columna derecha, con mouse o con las flechas (16 px, Mayús 64 px); doble clic o Inicio restablecen el ancho. Los anchos se recuerdan.
+- **Aleatorio**: sin tocar el orden original, el reproductor recorre una copia mezclada (se clona la playlist y se mezcla con Fisher–Yates usando solo `moveNode`; la canción que suena pasa a la cabeza). «Sonando» muestra «Orden aleatorio» y la posición del nodo (`nodo [i] · length N`), y «Estructura» muestra la lista mezclada. Se activa desde el reproductor o la cabecera de la lista y se recuerda.
+- **Cabecera de la playlist**: carátula generada con la inicial sobre un degradado fijo para cada playlist, nombre, «N canciones · M min», reproducir, aleatorio, «Agregar canciones» (varias a la vez, con filtro y posición), «Importar aquí» (archivos nuevos van a la Biblioteca y a esa playlist), renombrar y eliminar. Cada fila muestra el «Origen» (archivo local o Audius) y, al pasar el mouse o enfocar, un botón para reproducir.
+- **Explorar** (Audius): música libre de [Audius](https://audius.co). Busca por texto o por género, muestra los resultados como una lista doblemente enlazada temporal (siguiente, anterior, repetir y aleatorio funcionan sobre ella) y permite agregar canciones a la Biblioteca o a una playlist; solo se guardan las direcciones, no el audio. Sin internet aparece «No se pudo conectar con Audius» y tus canciones locales siguen sonando.
+- **Atajos de teclado**: Espacio reproducir o pausar · Mayús+→ / Mayús+← siguiente y anterior · → / ← adelantar o retroceder 5 s · ↑ / ↓ volumen · M silenciar · S aleatorio · R repetir · L «Reproduciendo ahora» · E columna derecha · / buscar · ? lista de atajos. No actúan mientras escribes ni con un diálogo abierto.
 - Diseño adaptable (escritorio, tableta y móvil con menú lateral), tema claro u oscuro según el sistema, uso completo con teclado y respeto por «reducir movimiento».
 
 ## Tecnologías
@@ -59,9 +66,11 @@ npm run build
 
 ## Privacidad
 
-Las canciones se seleccionan desde el computador de cada usuario y se reproducen directamente en el navegador. Nunca se suben a ningún servidor: la copia que se guarda para no tener que volver a elegirlas queda en el almacenamiento del propio navegador (IndexedDB) y se borra con «Borrar datos guardados». El repositorio ignora los archivos de audio para que no se publiquen por error.
+**Archivos locales.** Las canciones se seleccionan desde el computador de cada usuario y se reproducen directamente en el navegador. Nunca se suben a ningún servidor: la copia que se guarda para no tener que volver a elegirlas queda en el almacenamiento del propio navegador (IndexedDB) y se borra con «Borrar datos guardados». El repositorio ignora los archivos de audio para que no se publiquen por error.
 
-La única consulta externa es la búsqueda de letras en LRCLIB, que recibe el título, el artista, el álbum y la duración de la canción cuando no hay letra local y abres la pestaña «Letra».
+**Audius (streaming).** «Explorar» consulta la API pública de Audius por internet y reproduce las canciones directamente desde Audius. A Audius solo se envía el texto que buscas o el género elegido; tus archivos locales, sus nombres y sus metadatos nunca se envían. Del audio de Audius no se guarda ninguna copia: en tu navegador solo quedan las direcciones de las canciones que agregas a tu biblioteca.
+
+**Letras.** La búsqueda de letras en LRCLIB recibe el título, el artista, el álbum y la duración de la canción cuando no hay letra local y abres la pestaña «Letra».
 
 ## Documentación y forma de trabajo
 

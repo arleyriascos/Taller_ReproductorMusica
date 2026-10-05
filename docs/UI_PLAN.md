@@ -9,23 +9,23 @@ Every element must have a function. Interface text in Spanish.
 
 | Width | Layout |
 |---|---|
-| ≥ 1100px | Sidebar (240px) · main list · structure panel (right column, `clamp(300px, 24vw, 340px)`, **visible by default**; hiding it gives the space back to the list) · player bar fixed at the bottom |
+| ≥ 1100px | Sidebar (240px by default, 200–360px) · main list (never below 480px) · structure panel (right column, 340px by default, 280–520px, **visible by default**; hiding it gives the space back to the list) · player bar fixed at the bottom. Two splitters between the columns resize them (section 13) |
 | 768–1099px | Sidebar (224px) · main list · structure panel hidden by default, opens as an overlay from the right (up to 360px) above the player bar, with a backdrop · player bar |
 | < 768px | Top bar with menu button; sidebar as drawer; structure panel hidden by default, opens as a bottom sheet (max 75% of the height) with a handle and close button, above the compact player; compact player (cover, title, previous, play/pause, next, repeat, structure toggle; thin progress line on top) |
 
 "Reproduciendo ahora": from 768px it covers the sidebar, the main list and the structure panel (the player bar stays visible below); under 768px it is full screen with its own large controls and the compact player is hidden.
 
-The track list hides its album column when the list itself is narrower than 720px (container query), so the open panel never squeezes the columns.
+The track list hides its album and "Origen" columns when the list itself is narrower than 720px (container query), so the open panel never squeezes the columns.
 
 ## 3. Regions
 
-Sidebar: "Musongs" brand · "Tu música" → Biblioteca · "Playlists" list (selected one highlighted) · "Nueva playlist" · "Cargar canciones" · "Cargar carpeta" · footer with the storage note and "Borrar datos guardados".
+Sidebar: "Musongs" brand · "Descubrir" → Explorar · "Tu música" → Biblioteca · "Playlists" list (selected one highlighted) · "Nueva playlist" · "Cargar canciones" · "Cargar carpeta" · footer with the storage note, "Atajos de teclado" and "Borrar datos guardados".
 
-Main list: header with name, "N canciones · M min", actions ("Agregar canción", rename, duplicate, delete; none for the Library), and a toolbar with the round play button and the search box "Buscar en esta lista" (both also in the Library). Rows: position (or playing indicator), cover, title, artist, album, duration, and two direct icon buttons (see section 8). Remove button label: "Quitar de esta playlist" (in the Library: "Eliminar de la biblioteca").
+Main list: header with a generated cover (first letter on a gradient; the Library shows its icon), name, "N canciones · M min", and an action bar: round play button, "Aleatorio" (toggle), "Agregar canciones", "Importar aquí", "Duplicar", "Renombrar", "Eliminar playlist" (the Library only has play, "Aleatorio" and "Duplicar"), plus the search box "Buscar en esta lista". Rows: grip handle "Arrastrar para mover", position (a play button on hover or focus, playing bars on the current row), cover, title, artist, album, "Origen" ("Archivo local" or "Audius"), duration, and the row buttons (see section 8). Remove button label: "Quitar de esta playlist" (in the Library: "Eliminar de la biblioteca").
 
-"Agregar canción" dialog: one dialog with two entry modes (see section 8), radio group Inicio / Final / Posición, number input `1..length+1` of the destination shown only for Posición, "Agregar" and "Cancelar".
+"Agregar canción" dialog (from a row): destination select, radio group Inicio / Final / Posición, number input `1..length+1` of the destination shown only for Posición. "Agregar canciones" dialog (from the header): destination fixed, filter box, checkbox list of Library songs, "N seleccionadas" and the same placement group.
 
-Player bar: cover, title, artist, "Abrir reproduciendo ahora" (chevron) · previous, play/pause, next, repeat · current time, progress (seekable), duration · mute, volume · structure panel button.
+Player bar: cover, title, artist, "Abrir reproduciendo ahora" (chevron) · "Aleatorio" (`aria-pressed`), previous, play/pause, next, repeat · current time, progress (seekable), duration · mute, volume · structure panel button.
 
 "Reproduciendo ahora": header with close button, "Reproduciendo ahora" and "Reproduciendo desde «lista»" · large cover, title, artist, album · (mobile) large controls and progress · tabs "A continuación" and "Letra".
 
@@ -36,7 +36,7 @@ Right column: tabs "Sonando" and "Estructura" with a close button (see section 1
 | State | What is shown |
 |---|---|
 | Empty Library | Illustration-free card: "Carga tu primera canción", short text, buttons "Cargar canciones" and "Cargar carpeta" |
-| Empty playlist | "Esta playlist está vacía", "Agrega canciones desde la Biblioteca" |
+| Empty playlist | "Esta playlist está vacía", "Usa «Agregar canciones» para elegir de tu biblioteca, o suelta archivos aquí." |
 | Nothing playing | Player bar shows "Elige una canción" with controls disabled |
 | Unavailable song | Row in muted color with "Archivo no disponible"; clicking shows the toast "Esta canción no está disponible" |
 | Saved songs whose audio is not stored (storage failed or cleared) | Banner "Reconecta tus archivos para escucharlos" with "Cargar carpeta" |
@@ -54,6 +54,14 @@ Right column: tabs "Sonando" and "Estructura" with a close button (see section 1
 | Lyrics not found | "Letra no disponible para esta canción" |
 | Lyrics error (offline, LRCLIB busy) | "No se pudo cargar la letra" and "Reintentar" |
 | Instrumental | "Instrumental" |
+| Dragging files over the list | Overlay "Suelta para agregar" and an insertion line; not shown in Explorar |
+| Explorar loading | Eight skeleton rows |
+| Explorar results | Rows with "Origen" = Audius, a "Ver en Audius" link and an add button |
+| Explorar empty | "Sin resultados en Audius para «texto»" |
+| Explorar offline or API down | "No se pudo conectar con Audius" and "Reintentar"; local songs keep playing |
+| Audius stream fails | Toast "No se pudo reproducir esta canción de Audius" (no automatic skip) |
+| Next or previous with missing files | They skip unavailable songs; at the end (or when nothing is available) playback stops |
+| Shuffle on | "Aleatorio" pressed in the player bar and the header; "Sonando" shows "Orden aleatorio" |
 
 ## 5. Visual identity
 
@@ -156,3 +164,19 @@ Shape: 8px radius for controls, 12px for cards and panels. Icons: inline SVG, 20
 8. Banner while any song is unavailable: "Reconecta tus archivos para escucharlos" with a "Cargar carpeta" button; it disappears when nothing is unavailable.
 9. Sidebar footer: "N canciones en este navegador · X MB" (hidden when browser storage is not available) and "Borrar datos guardados", which opens a confirmation dialog ("¿Borrar datos guardados?"). Confirming clears the stored audio, the saved state and the preferences and reloads the app empty.
 10. Storage failures (IndexedDB blocked, private mode, quota) show one error toast per store and the app keeps working; after a reload the songs are unavailable and the banner offers reconnection.
+
+## 13. Interaction decisions (final stage)
+
+**Drag and drop.** Each row has a grip handle (`aria-label` "Arrastrar para mover"). Mouse: pressing and moving 4 px starts the drag. Touch: a 300 ms long press on the handle starts it (moving earlier means the user is scrolling, so nothing starts). While dragging the row is dimmed, a lifted copy follows the pointer, an accent line shows where it will land, and the list scrolls near its top and bottom edges. Dropping places the song there; Escape or releasing outside the list cancels. Dragging over a user playlist in the sidebar highlights it and dropping appends the song there with the toast "Se agregó «X» a «Playlist»". Reordering is disabled while a search is active and does not exist in Explorar; "Subir" and "Bajar" remain the keyboard alternative.
+
+**Files from the operating system.** Dragging files or folders over the list shows the overlay "Suelta para agregar" and the insertion line. In the Library the new songs are inserted at the drop position; in a playlist they also go to the end of the Library and are inserted into the playlist at the drop position (songs already in the Library are inserted too). "Importar aquí" (user playlists) opens a file picker and adds the songs to the end of the Library and of that playlist.
+
+**Resizable columns (from 1100 px).** The sidebar and the right column have splitters (`role="separator"`, vertical, with `aria-valuenow/min/max`, labels "Cambiar ancho de la barra lateral" and "Cambiar ancho del panel derecho"). Drag with the pointer, or focus and use ← / → (16 px, Shift 64 px); double click or Home restore the default. Limits: sidebar 200–360, right column 280–520, main at least 480. The widths are saved in the preferences and re-clamped when the window changes size. An accent line and the column-resize cursor show the splitter on hover, focus and drag.
+
+**Shuffle.** The "Aleatorio" buttons toggle the same state. The visible list never changes order; the player walks a shuffled copy. "Sonando" shows "Orden aleatorio" and, under the title, `nodo [i] · length N` in monospace. "Estructura" shows the shuffled copy while the visible playlist is the one being shuffled.
+
+**Rows.** The position cell is a real button (`aria-label` "Reproducir «título»") that shows a play icon on hover and on keyboard focus; clicking anywhere else on the row also plays it.
+
+**Explorar.** Header "Explorar" / "Música libre de Audius"; search "Buscar en Audius" (400 ms debounce, Enter searches at once, empty shows trending); chips Todos, Electronic, Hip-Hop/Rap, Rock, Pop, Lo-Fi, Latin (choosing one clears the text; typing clears the chip); footer "Música de Audius · Ver en Audius" and the note "Explorar consulta Audius por internet; tus archivos locales nunca se envían." Results never show reorder, move or remove controls. A new search does not stop the song that is playing.
+
+**Keyboard shortcuts** (ignored while typing or with a dialog open; Space is left to a focused button and arrows to a focused slider, separator or tab): Space play/pause · Shift+→ / Shift+← next / previous · → / ← seek 5 s · ↑ / ↓ volume 10 % · M mute · S shuffle · R repeat · L "Reproduciendo ahora" · E right column · / search · ? opens "Atajos de teclado" (also from the sidebar button).

@@ -30,6 +30,14 @@ const ICONS = {
   chevronDown: '<path d="m6 9 6 6 6-6" />',
   expand: '<path d="M14 4h6v6M10 20H4v-6" /><path d="m20 4-6.5 6.5M4 20l6.5-6.5" />',
   copy: '<rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />',
+  grip: '<circle cx="9" cy="6" r="1.3" fill="currentColor" stroke="none" /><circle cx="15" cy="6" r="1.3" fill="currentColor" stroke="none" /><circle cx="9" cy="12" r="1.3" fill="currentColor" stroke="none" /><circle cx="15" cy="12" r="1.3" fill="currentColor" stroke="none" /><circle cx="9" cy="18" r="1.3" fill="currentColor" stroke="none" /><circle cx="15" cy="18" r="1.3" fill="currentColor" stroke="none" />',
+  file: '<path d="M6 3h8l4 4v14H6z" /><path d="M14 3v4h4" /><path d="M10 17v-4l3-.8v3.3" /><circle cx="9" cy="17.2" r="1" /><circle cx="12" cy="16.2" r="1" />',
+  cloud: '<path d="M7.5 18.5a4.5 4.5 0 0 1-.6-8.96 5.5 5.5 0 0 1 10.6 1.46A3.8 3.8 0 0 1 17 18.5z" />',
+  shuffle: '<path d="M3 7h3.5c1.5 0 2.7.7 3.6 2l3.8 6c.9 1.3 2.1 2 3.6 2H21" /><path d="m18.5 14.5 2.5 2.5-2.5 2.5" /><path d="M3 17h3.5c1.5 0 2.7-.7 3.6-2M14 8.5c.9-1.2 2.1-1.5 3.6-1.5H21" /><path d="m18.5 4.5 2.5 2.5-2.5 2.5" />',
+  keyboard: '<rect x="3" y="6" width="18" height="12" rx="2" /><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10" />',
+  compass: '<circle cx="12" cy="12" r="9" /><path d="m15.5 8.5-2 5-5 2 2-5z" />',
+  external: '<path d="M14 4h6v6M20 4l-9 9" /><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" />',
+  refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7" /><path d="M20 4v7h-7" />',
   structure: '<rect x="3" y="3" width="8" height="6" rx="1.5" /><rect x="13" y="15" width="8" height="6" rx="1.5" /><path d="M7 9v7a2 2 0 0 0 2 2h4" /><path d="M17 15V8a2 2 0 0 0-2-2h-4" />',
 } as const;
 
@@ -88,6 +96,8 @@ export function setCover(cover: HTMLElement, url: string | null): void {
   if (url === null) {
     cover.replaceChildren(createIcon("music"));
   } else {
-    cover.replaceChildren(Object.assign(document.createElement("img"), { src: url, alt: "", loading: "lazy" }));
+    const image = Object.assign(document.createElement("img"), { src: url, alt: "", loading: "lazy" });
+    image.addEventListener("error", () => setCover(cover, null), { once: true });
+    cover.replaceChildren(image);
   }
 }

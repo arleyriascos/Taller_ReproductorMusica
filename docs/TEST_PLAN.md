@@ -33,6 +33,10 @@ Every data-structure test ends by asserting the invariants of `DATA_STRUCTURE.md
 - Removing current with next → next; at tail → previous; only node → `null`.
 - `selectFirst` / `selectLast`: `null` on empty; move `current` to `head` / `tail` from anywhere; same node with one song; never make the list circular (`next()` at tail and `previous()` at head still return `null`) and record no operation.
 - `moveUp` / `moveDown` move a node one place with valid links and do nothing at the edges; `current` stays on the same node (when it is the moved node and when another node moves past it); the history records `move`.
+- `findAvailable`: skips unavailable songs in both directions; `null` at the ends without wrapping; wraps through `head` / `tail` skipping unavailable songs; stops after one cycle when nothing is available; can land on the current song when it is the only available one; `null` without a current node; changes neither `current` nor the history.
+- `moveToPosition`: forward and backward, first and last position, same position records nothing, `current` stays on the same node, records `move`, rejects positions out of range or not integers (`RangeError`) and nodes of another playlist.
+- `shuffle`: same songs, length and valid links (forward and backward) for any random source; deterministic cases (random 0 reverses the list, random near 1 leaves it untouched with no operation recorded); the Fisher–Yates steps with given picks; only `move` operations on the existing nodes; empty and single-song lists; `current` kept.
+- `shuffledCopy`: original untouched (order, nodes, `current`, history), new nodes, anchor song at the head and selected, no current without anchor, the exact node anchored when a song appears twice, `originOf` maps every copy node to its original, navigation follows the shuffled links.
 - `removeAllOf` removes every node holding the song.
 - `clone`: same order, different nodes, same `Song` objects, empty history, `current` null, original unchanged after modifying the clone.
 
@@ -46,17 +50,19 @@ Every data-structure test ends by asserting the invariants of `DATA_STRUCTURE.md
 - `addTracks` (real `File` objects): new → `added` at the end of the Library; same fingerprint available → `duplicated`; same fingerprint unavailable → `reconnected` and available again.
 - `addTracks` passes `coverType`, `lyricsFile` and `embeddedLyrics` to the new song and again on reconnection; `release()` clears them.
 - `removeSongEverywhere` removes every node of the song from the Library and all playlists and makes the song unavailable.
+- `addTracks` with `placement`: new songs inserted consecutively at a Library position (first, middle, last); reconnected and duplicated songs keep their place; `destination` inserts every resulting song, duplicates included, into a playlist at consecutive positions (including the end).
+- Remote songs: `ensureInLibrary` appends a new remote song, reuses the Library song with the same fingerprint, returns an existing local song untouched; `toStoredState` / `restore` round trip with URLs and without cover; `removeSongEverywhere` removes a remote song everywhere and keeps it playable; remote songs are never reported as unavailable.
 - `duplicatePlaylist`: names "(copia)", "(copia 2)", "(copia 3)"; respects 40 characters; the copy is independent; unknown id throws.
 
 - `toStoredState` / `restore`: round trip keeps the order of the Library and of every playlist, duplicated songs inside a playlist, and unavailable songs; restored songs are unavailable with their saved id; `addTracks` after `restore` reconnects them keeping their ids; restoring an empty state; restoring into a manager that already has data throws.
 
 ### PlaylistStorage.test.ts
 Runs in Node with a fake `Storage`.
-- State and preferences round trip; nothing stored → `null`; corrupt JSON → `null`; wrong version, lists pointing to unknown songs, duplicated song ids, malformed songs or playlists and invalid preferences are rejected; `clear` removes both keys; a write failure (quota) or missing storage is reported once through the callback and never throws.
+- State version 2 and preferences round trip (including `panelWidths` and `shuffle`); old preferences without them load with defaults and malformed ones are replaced; a version 1 state is migrated (every song `local`) and saved back as version 2; a mixed local + audius state round trips; audius songs without valid `https` URLs or with an unknown `source` are rejected; nothing stored → `null`; corrupt JSON → `null`; an unknown version, lists pointing to unknown songs, duplicated song ids, malformed songs or playlists and invalid preferences are rejected; `clear` removes both keys; a write failure (quota) or missing storage is reported once through the callback and never throws.
 
 ### AudioStore.test.ts
 Runs in Node without IndexedDB.
-- Without IndexedDB, or when opening the database fails, every operation resolves without throwing (`get` and `usage` give `null`) and the failure is reported once. The real IndexedDB paths are validated manually (M93–M96).
+- Without IndexedDB, or when opening the database fails, every operation resolves without throwing (`get` and `usage` give `null`) and the failure is reported once. `reattach` asks only for local songs (no request for remote songs), leaves a local song unavailable when nothing is stored, and `forget` deletes only local songs. The real IndexedDB paths are validated manually (M93–M96).
 
 ### format.test.ts
 - `formatTime`: m:ss, h:mm:ss, fractions dropped, "—:—" for 0, negative, NaN and Infinity.
@@ -64,6 +70,8 @@ Runs in Node without IndexedDB.
 - `formatTotal`: rounds up to minutes, "N h M min" from 60 minutes, "0 min" for invalid values.
 - `countLabel`: singular only for exactly 1.
 - `formatMegabytes`: one decimal with a comma; 0 for invalid values.
+- `clampPanelWidths`: valid widths kept; sidebar limited to 200–360 and right column to 280–520; main never below 480 for any window width; the other panel shrinks first and the favored one is kept; rounding and invalid values; dragging one panel without moving the other.
+- `coverToneIndex`: deterministic, inside the palette, spreads different ids; `coverInitial`: uppercase first letter, emoji kept whole, "?" for blank names.
 - `comparableText`: ignores case, spaces, accents, dieresis and circumflex; "ñ" stays distinct in composed and decomposed form; blank text → "".
 
 ### SongLoader.test.ts
@@ -94,6 +102,28 @@ Fake `fetch` returning real `Response` objects.
 - Cache: found and not-found cached per song; network error not cached (retry asks again); concurrent calls share one in-flight promise.
 
 `MusicPlayer` is not unit-tested (it depends on the browser audio element); it is validated manually (M08–M14, M20, M21, M34, M37–M43, M46–M48). `NowPlayingView` is validated manually (M49–M66). `StructurePanelView` is validated manually (M25, M26, M67–M86). `NowPlayingPanelView`, the move buttons, the banner and the sidebar footer are validated manually (M87–M96).
+
+### Song.test.ts
+- A new song is local and unavailable; `attachRemote` makes it an available remote song with stream, cover (`image/jpeg`) and page; cover optional; `release()` never revokes remote URLs and keeps a remote song available; `attachFile` turns a remote song into a local one; `release()` still revokes the object URLs of a local song.
+
+### droppedFiles.test.ts
+- File drags are detected by `types`; single files get their `webkitRelativePath`; folders are walked recursively across reader batches (so `.lrc` pairing keeps working); unreadable entries are skipped; the plain file list is the fallback; an empty folder gives nothing.
+
+### AudiusTrackAdapter.test.ts
+Invented fixtures only.
+- A valid track becomes a remote song (title and artist trimmed, album empty, duration, `audius:<id>`, stream URL with `app_name=Musongs`, page URL, `image/jpeg` cover type); artwork preference 480x480 → 1000x1000 → 150x150, unusable or non-https artwork → no cover; non-objects, invalid id, blank title, invalid duration, missing user name, invalid permalink and non-streamable tracks (`is_streamable`, `is_delete`, `is_unlisted`, `access.stream`) → `null`; a new object on every call.
+
+### AudiusService.test.ts
+Fake `fetch`.
+- URLs (trending with and without genre, search with the trimmed query, `app_name`, `limit`); mapping in order; invalid items and duplicated fingerprints dropped; empty list is `ok`; network failure, non-200 and malformed bodies → `error`; 10 s abort with fake timers; errors not cached; 5-minute cache (same song objects, expires at exactly 5 minutes); separate entries per genre and per normalized query.
+
+### ExploreSession.test.ts
+Fake service.
+- Starts empty and loads trending once; the playlist is built with append (links follow the result order); search clears the genre, a genre clears the query, an empty search shows trending; loading → ready notifications; error and retry; previous results kept when a new request fails; a new search creates a new playlist object (the old one keeps its songs and its current node); a slow answer replaced by a newer request is ignored; `owns` recognizes the playlists it created.
+
+### KeyboardShortcuts.test.ts
+Pure dispatch (no DOM).
+- Every key maps to its action with its arguments (Space, Shift+→ / ←, → / ←, ↑ / ↓, M, S, R, L, E, /, ?); uppercase letters work; unknown keys do nothing; plain and shifted arrows are different; everything is ignored while typing, with a dialog open or with Ctrl, Meta or Alt; Space is left to focused buttons and arrows to separators, tabs and sliders; only seek and volume repeat while a key is held; `SHORTCUT_HELP` lists each shortcut once.
 
 ## 2. Manual
 
@@ -196,6 +226,32 @@ Fake `fetch` returning real `Response` objects.
 | M95 | "Borrar datos guardados" and confirm | The app reloads empty; no keys left in `localStorage`, the `musongs` IndexedDB store is empty |
 | M96 | Block IndexedDB (private window or simulated failure), load songs, reload | One error toast; the songs play in the session; after reload they are unavailable with the banner; clicking one shows "Esta canción no está disponible" and changes neither the current song nor the context |
 | M97 | Tablet and phone widths, light and dark | The two-tab column, banner and footer fit with no horizontal scroll |
+
+| M98 | Delete one stored file from IndexedDB (or load without storing), reload, play the song before the missing one, then next and previous; with repeat "toda la lista" at the last song | Next and previous jump over the unavailable song; with repeat the wrap also skips it; when no other song is available nothing happens |
+| M99 | Drag a row with the mouse to another position, to the first and to the last place; press Escape during a drag; release outside the list | Order changes with the structure tab showing the move; Escape and outside drops change nothing; the playing song keeps playing |
+| M100 | Same on a phone width (touch): short swipe on the handle, then press and hold 300 ms and drag | The short swipe scrolls and does not drag; the long press lifts the row |
+| M101 | Drag near the bottom and top edges of a long list | The list scrolls automatically while the line follows |
+| M102 | Search something, then try the handles; open Explorar | Handles hidden while searching; no handles in Explorar |
+| M103 | Drag a row over a user playlist in the sidebar and release | The playlist is highlighted while hovering; the song is added at its end with the toast "Se agregó «X» a «Playlist»" |
+| M104 | Drag audio files (and a folder with a `.lrc`) from the file explorer over the Library (middle row), over an empty playlist and over a playlist | Overlay "Suelta para agregar" and the insertion line; Library: new songs inserted consecutively at that place; playlist: new songs also at the end of the Library and at the drop place; songs already in the Library are inserted too; lyrics paired; no overlay in Explorar |
+| M105 | Drag the splitters (mouse), use ← / → and Shift, double click and Home; reload; resize the window to 1100 px and to a tablet width | Widths stay within 200–360 and 280–520 with the main column at 480 or more; `aria-valuenow` follows; defaults on double click and Home; widths kept after reload; clamped on resize; no splitters below 1100 px |
+| M106 | Turn shuffle on while playing (player bar, header and `S`), press next several times, turn it off | The library order never changes; the playing song continues; "Sonando" shows "Orden aleatorio" and `nodo [0]` at the start; "Estructura" shows the shuffled list; turning off keeps the same song highlighted in the original; reload keeps the button pressed |
+| M107 | Shuffle on, then add, move or remove a song of that playlist | The shuffled list is rebuilt keeping the current song |
+| M108 | Open a playlist | Generated cover with the first letter and a stable gradient (same playlist, same colors after reload), name, "N canciones · M min"; Library shows its icon; "Importar aquí" hidden in the Library |
+| M109 | Row hover and keyboard focus on the position cell; container narrower than 720 px | The number becomes a play button (label "Reproducir «título»"); "Origen" and the album column disappear under 720 px |
+| M110 | "Agregar canciones" with several songs checked, a filter text, and each of Inicio / Final / Posición 2 | Songs enter in Library order at the chosen place; toast "Se agregaron N canciones"; nothing selected shows an inline error |
+| M111 | "Importar aquí" with new and already known files | New files go to the end of the Library and of the playlist; known ones only to the playlist |
+| M112 | "Sonando" while playing and after moving songs | `nodo [i] · length N` in monospace follows the current song and the structure |
+| M113 | Open Explorar (online): skeleton, trending, chips, search with debounce, Enter, empty text, a nonsense search | Skeleton rows then results with "Origen: Audius"; chips and search exclude each other; "Sin resultados en Audius para «texto»" for no results |
+| M114 | Play a result, use next, previous, repeat and shuffle, then run a new search while it plays | They follow the results list; the new search does not interrupt the song; "Estructura" shows the results while Explorar is visible |
+| M115 | Add a result to the Library and to a playlist (also at a position) | Added to the Library first when missing (no duplicates), then to the playlist; "Origen" shows Audius; reload keeps them and they play; the sidebar storage note does not count them |
+| M116 | Go offline (browser devtools), open Explorar, press "Reintentar" after going online; play a local song while offline | "No se pudo conectar con Audius" and "Reintentar"; results after retrying; local songs play offline |
+| M117 | Block the stream request of an Audius song (devtools) and play it | Toast "No se pudo reproducir esta canción de Audius"; no automatic skip |
+| M118 | "Ver en Audius" links | Open a new tab with `rel="noopener noreferrer"`; the footer shows "Música de Audius" and the privacy note |
+| M119 | Remove a remote song from the Library | It disappears from every playlist; the results in Explorar can still be played |
+| M120 | Keyboard: Space, Shift+→ / ←, → / ←, ↑ / ↓, M, S, R, L, E, /, ? | Each does what the button does; nothing happens while typing in a field or with a dialog open; Space on a focused button toggles that button only; ? opens "Atajos de teclado" |
+| M121 | Old data: with `musongs.state.v1` of version 1 and old preferences in `localStorage`, open the app | The library loads (all songs local) and the old preferences apply with default panel widths and shuffle off |
+| M122 | All new screens at desktop, tablet and phone widths, light and dark | No horizontal scroll, no overlapping controls, readable contrast |
 
 ## 3. Before every push
 

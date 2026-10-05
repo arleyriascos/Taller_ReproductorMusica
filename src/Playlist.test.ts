@@ -278,6 +278,67 @@ describe("Playlist moving", () => {
   });
 });
 
+describe("Playlist moveToPosition", () => {
+  it("moves a node forward and backward to a 1-based position", () => {
+    const playlist = playlistOf(a, b, c, d);
+    playlist.moveToPosition(nodeAt(playlist, 1), 3);
+    expect(titlesOf(playlist)).toEqual(["B", "C", "A", "D"]);
+    expectValidLinks(playlist);
+    playlist.moveToPosition(nodeAt(playlist, 4), 1);
+    expect(titlesOf(playlist)).toEqual(["D", "B", "C", "A"]);
+    expectValidLinks(playlist);
+  });
+
+  it("moves to the first and to the last position", () => {
+    const playlist = playlistOf(a, b, c);
+    playlist.moveToPosition(nodeAt(playlist, 2), 3);
+    expect(playlist.tail?.value).toBe(b);
+    playlist.moveToPosition(nodeAt(playlist, 2), 1);
+    expect(playlist.head?.value).toBe(c);
+    expect(titlesOf(playlist)).toEqual(["C", "A", "B"]);
+    expectValidLinks(playlist);
+  });
+
+  it("does nothing and records nothing when the position is the same", () => {
+    const playlist = playlistOf(a, b, c);
+    playlist.moveToPosition(nodeAt(playlist, 2), 2);
+    expect(titlesOf(playlist)).toEqual(["A", "B", "C"]);
+    expect(playlist.history).toHaveLength(3);
+  });
+
+  it("keeps the current node on the same node", () => {
+    const playlist = playlistOf(a, b, c);
+    const current = nodeAt(playlist, 1);
+    playlist.select(current);
+    playlist.moveToPosition(current, 3);
+    expect(playlist.current).toBe(current);
+    expect(playlist.positionOf(current)).toBe(3);
+    expect(playlist.previous()?.value).toBe(c);
+  });
+
+  it("records the move in the history", () => {
+    const playlist = playlistOf(a, b, c);
+    playlist.moveToPosition(nodeAt(playlist, 3), 1);
+    expect(playlist.lastOperation).toMatchObject({ type: "move", index: 0, valueLabel: "C", nextLabel: "A" });
+  });
+
+  it("rejects positions out of range or not integers", () => {
+    const playlist = playlistOf(a, b, c);
+    const node = nodeAt(playlist, 2);
+    for (const position of [0, 4, -1, 1.5, Number.NaN]) {
+      expect(() => playlist.moveToPosition(node, position)).toThrow(RangeError);
+    }
+    expect(titlesOf(playlist)).toEqual(["A", "B", "C"]);
+    expectValidLinks(playlist);
+  });
+
+  it("rejects a node from another playlist", () => {
+    const playlist = playlistOf(a, b);
+    expect(() => playlist.moveToPosition(nodeAt(playlistOf(c, a), 2), 1)).toThrow(Error);
+    expect(titlesOf(playlist)).toEqual(["A", "B"]);
+  });
+});
+
 describe("Playlist navigation", () => {
   it("select sets current to a node of the playlist", () => {
     const playlist = playlistOf(a, b);
@@ -448,5 +509,224 @@ describe("Playlist clone", () => {
     const library = new Playlist("Biblioteca", true);
     library.addAtEnd(a);
     expect(library.clone("Copia").isLibrary).toBe(false);
+  });
+});
+
+function availableSong(title: string): Song {
+  const song = songNamed(title);
+  song.attachFile({ file: new File(["audio"], `${title}.mp3`), cover: null, coverType: null, lyricsFile: null, embeddedLyrics: null });
+  return song;
+}
+
+describe("Playlist findAvailable", () => {
+  const first = availableSong("P1");
+  const missing = songNamed("P2");
+  const third = availableSong("P3");
+  const alsoMissing = songNamed("P4");
+
+  it("skips unavailable songs in both directions", () => {
+    const playlist = playlistOf(first, missing, third);
+    playlist.select(nodeAt(playlist, 1));
+    expect(playlist.findAvailable("next", false)?.value).toBe(third);
+    playlist.select(nodeAt(playlist, 3));
+    expect(playlist.findAvailable("previous", false)?.value).toBe(first);
+  });
+
+  it("returns null at the ends without wrapping", () => {
+    const playlist = playlistOf(first, missing, third, alsoMissing);
+    playlist.select(nodeAt(playlist, 3));
+    expect(playlist.findAvailable("next", false)).toBeNull();
+    playlist.select(nodeAt(playlist, 1));
+    expect(playlist.findAvailable("previous", false)).toBeNull();
+  });
+
+  it("wraps around skipping unavailable songs", () => {
+    const playlist = playlistOf(first, missing, third, alsoMissing);
+    playlist.select(nodeAt(playlist, 3));
+    expect(playlist.findAvailable("next", true)?.value).toBe(first);
+    playlist.select(nodeAt(playlist, 1));
+    expect(playlist.findAvailable("previous", true)?.value).toBe(third);
+  });
+
+  it("returns null when no other song is available and no wrap", () => {
+    const playlist = playlistOf(missing, alsoMissing, first);
+    playlist.select(nodeAt(playlist, 3));
+    expect(playlist.findAvailable("next", false)).toBeNull();
+    expect(playlist.findAvailable("previous", false)).toBeNull();
+  });
+
+  it("finishes after one cycle when nothing is available", () => {
+    const playlist = playlistOf(missing, alsoMissing);
+    playlist.select(nodeAt(playlist, 1));
+    expect(playlist.findAvailable("next", true)).toBeNull();
+    expect(playlist.findAvailable("previous", true)).toBeNull();
+  });
+
+  it("lands on the current song when it is the only available one and wrapping", () => {
+    const playlist = playlistOf(missing, first, alsoMissing);
+    const current = nodeAt(playlist, 2);
+    playlist.select(current);
+    expect(playlist.findAvailable("next", true)).toBe(current);
+  });
+
+  it("returns null without a current node", () => {
+    expect(playlistOf(first, third).findAvailable("next", true)).toBeNull();
+  });
+
+  it("does not change the current node or the history", () => {
+    const playlist = playlistOf(first, missing, third);
+    const current = nodeAt(playlist, 1);
+    playlist.select(current);
+    const operations = playlist.history.length;
+    playlist.findAvailable("next", true);
+    expect(playlist.current).toBe(current);
+    expect(playlist.history).toHaveLength(operations);
+  });
+});
+
+function sequence(...values: number[]): () => number {
+  let index = 0;
+  return () => values[index++ % values.length];
+}
+
+function expectBackwardIsReverse(playlist: Playlist): void {
+  const forward = [...playlist.nodes()];
+  const backward: Node<Song>[] = [];
+  for (let node = playlist.tail; node !== null; node = node.prev) {
+    backward.push(node);
+  }
+  expect(backward).toEqual([...forward].reverse());
+  expect(playlist.head?.prev ?? null).toBeNull();
+  expect(playlist.tail?.next ?? null).toBeNull();
+}
+
+describe("Playlist shuffle", () => {
+  const e = songNamed("E");
+  const f = songNamed("F");
+
+  it("keeps the same songs and length with valid links for any random source", () => {
+    for (const random of [() => 0, () => 0.999, sequence(0.3, 0.7, 0.1, 0.9), Math.random]) {
+      const playlist = playlistOf(a, b, c, d, e, f);
+      playlist.shuffle(random);
+      expect(playlist.length).toBe(6);
+      expect(titlesOf(playlist).sort()).toEqual(["A", "B", "C", "D", "E", "F"]);
+      expectValidLinks(playlist);
+      expectBackwardIsReverse(playlist);
+    }
+  });
+
+  it("is deterministic: random always 0 reverses the list", () => {
+    const playlist = playlistOf(a, b, c, d);
+    playlist.shuffle(() => 0);
+    expect(titlesOf(playlist)).toEqual(["D", "C", "B", "A"]);
+  });
+
+  it("random picking the last index leaves the order untouched and records no moves", () => {
+    const playlist = playlistOf(a, b, c);
+    const operations = playlist.history.length;
+    playlist.shuffle(() => 0.999);
+    expect(titlesOf(playlist)).toEqual(["A", "B", "C"]);
+    expect(playlist.history).toHaveLength(operations);
+  });
+
+  it("follows the Fisher–Yates steps with the given picks", () => {
+    const playlist = playlistOf(a, b, c, d);
+    const operations = playlist.history.length;
+    playlist.shuffle(sequence(0.5, 0.1, 0.9));
+    expect(titlesOf(playlist)).toEqual(["B", "D", "A", "C"]);
+    expect(playlist.history).toHaveLength(operations + 2);
+    expectValidLinks(playlist);
+  });
+
+  it("only uses move operations on the nodes already in the list", () => {
+    const playlist = playlistOf(a, b, c, d, e);
+    const nodes = new Set(playlist.nodes());
+    const operations = playlist.history.length;
+    playlist.shuffle(sequence(0.2, 0.6, 0.4, 0.8));
+    expect(new Set(playlist.nodes())).toEqual(nodes);
+    expect(playlist.history.slice(operations).every((operation) => operation.type === "move")).toBe(true);
+  });
+
+  it("handles empty and single-song lists", () => {
+    const empty = playlistOf();
+    empty.shuffle();
+    expect(empty.length).toBe(0);
+    const single = playlistOf(a);
+    single.shuffle();
+    expect(titlesOf(single)).toEqual(["A"]);
+  });
+
+  it("keeps the current node", () => {
+    const playlist = playlistOf(a, b, c, d);
+    const current = nodeAt(playlist, 2);
+    playlist.select(current);
+    playlist.shuffle(() => 0);
+    expect(playlist.current).toBe(current);
+  });
+});
+
+describe("Playlist shuffledCopy", () => {
+  it("leaves the original untouched and creates new nodes", () => {
+    const original = playlistOf(a, b, c, d);
+    const current = nodeAt(original, 3);
+    original.select(current);
+    const nodes = [...original.nodes()];
+    const operations = original.history.length;
+    const copy = original.shuffledCopy(() => 0, current);
+    expect(titlesOf(original)).toEqual(["A", "B", "C", "D"]);
+    expect(original.current).toBe(current);
+    expect(original.history).toHaveLength(operations);
+    expect([...original.nodes()]).toEqual(nodes);
+    expect([...copy.nodes()].some((node) => nodes.includes(node))).toBe(false);
+    expect(copy.id).not.toBe(original.id);
+    expect(copy.name).toBe(original.name);
+    expect(copy.isLibrary).toBe(false);
+  });
+
+  it("puts the anchor song at the head and selects it", () => {
+    const original = playlistOf(a, b, c, d);
+    const copy = original.shuffledCopy(sequence(0.3, 0.8, 0.1), nodeAt(original, 3));
+    expect(copy.head?.value).toBe(c);
+    expect(copy.current).toBe(copy.head);
+    expect(copy.length).toBe(4);
+    expect(titlesOf(copy).sort()).toEqual(["A", "B", "C", "D"]);
+    expectValidLinks(copy);
+    expectBackwardIsReverse(copy);
+  });
+
+  it("has no current when there is no anchor", () => {
+    const original = playlistOf(a, b, c);
+    expect(original.shuffledCopy(() => 0, null).current).toBeNull();
+  });
+
+  it("anchors the exact node when a song appears twice", () => {
+    const original = playlistOf(a, b, a, c);
+    const second = nodeAt(original, 3);
+    const copy = original.shuffledCopy(sequence(0.4, 0.2, 0.9), second);
+    const start = copy.head;
+    expect(start).not.toBeNull();
+    expect(start === null ? null : copy.originOf(start)).toBe(second);
+  });
+
+  it("maps every copy node back to its original node", () => {
+    const original = playlistOf(a, b, c, d);
+    const originals = new Set(original.nodes());
+    const copy = original.shuffledCopy(sequence(0.1, 0.9, 0.5), null);
+    for (const node of copy.nodes()) {
+      const origin = copy.originOf(node);
+      expect(origin).not.toBeNull();
+      expect(origin === null ? null : originals.has(origin)).toBe(true);
+      expect(origin?.value).toBe(node.value);
+    }
+    expect(original.originOf(nodeAt(original, 1))).toBeNull();
+  });
+
+  it("is a playlist whose navigation follows the shuffled links", () => {
+    const original = playlistOf(a, b, c);
+    const copy = original.shuffledCopy(() => 0, nodeAt(original, 2));
+    expect(copy.current?.value).toBe(b);
+    const seen = [copy.current?.value.title, copy.next()?.value.title, copy.next()?.value.title];
+    expect(seen).toEqual(["B", ...titlesOf(copy).slice(1)]);
+    expect(copy.next()).toBeNull();
   });
 });

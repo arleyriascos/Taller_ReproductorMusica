@@ -1,5 +1,7 @@
 import type { Lyrics, SongDetails, SongMedia } from "./types";
 
+const REMOTE_COVER_TYPE = "image/jpeg";
+
 export class Song {
   readonly id: string;
   readonly title: string;
@@ -12,6 +14,8 @@ export class Song {
   #coverType: string | null = null;
   #lyricsFile: File | null = null;
   #embeddedLyrics: Lyrics | null = null;
+  #pageUrl: string | null = null;
+  #isRemote = false;
 
   constructor(details: SongDetails, id: string = crypto.randomUUID()) {
     this.id = id;
@@ -50,13 +54,32 @@ export class Song {
     return this.#embeddedLyrics;
   }
 
+  get pageUrl(): string | null {
+    return this.#pageUrl;
+  }
+
+  get isRemote(): boolean {
+    return this.#isRemote;
+  }
+
   attachFile(media: SongMedia): void {
     this.release();
+    this.#isRemote = false;
+    this.#pageUrl = null;
     this.#sourceUrl = URL.createObjectURL(media.file);
     this.#coverUrl = media.cover === null ? null : URL.createObjectURL(media.cover);
     this.#coverType = media.cover === null ? null : media.coverType;
     this.#lyricsFile = media.lyricsFile;
     this.#embeddedLyrics = media.embeddedLyrics;
+  }
+
+  attachRemote(streamUrl: string, coverUrl: string | null, pageUrl: string): void {
+    this.release();
+    this.#isRemote = true;
+    this.#sourceUrl = streamUrl;
+    this.#coverUrl = coverUrl;
+    this.#coverType = coverUrl === null ? null : REMOTE_COVER_TYPE;
+    this.#pageUrl = pageUrl;
   }
 
   updateDuration(seconds: number): void {
@@ -66,6 +89,9 @@ export class Song {
   }
 
   release(): void {
+    if (this.#isRemote) {
+      return;
+    }
     Song.revoke(this.#sourceUrl);
     Song.revoke(this.#coverUrl);
     this.#sourceUrl = null;

@@ -1,4 +1,5 @@
 import type { Node } from "./Node";
+import type { Playlist } from "./Playlist";
 import type { Song } from "./Song";
 
 export type ListOperationType = "append" | "prepend" | "insert" | "remove" | "removeNode" | "move" | "clear";
@@ -62,6 +63,15 @@ export interface AddTracksResult {
   duplicated: number;
 }
 
+export interface TrackPlacement {
+  libraryPosition?: number;
+  destination?: { playlist: Playlist; position: number };
+}
+
+export type ExploreStatus = "loading" | "ready" | "error";
+
+export type AudiusResult = { status: "ok"; songs: Song[] } | { status: "error" };
+
 export interface RejectedFile {
   name: string;
   reason: "unsupported-format";
@@ -79,6 +89,24 @@ export type RepeatMode = "off" | "all" | "one";
 
 export type MoveDirection = "up" | "down";
 
+export type TraversalDirection = "next" | "previous";
+
+export type LoadKind = "files" | "folder";
+
+export type SongPlacement = { kind: "start" } | { kind: "end" } | { kind: "position"; position: number };
+
+export interface AddSongRequest {
+  song: Song;
+  playlistId: string;
+  placement: SongPlacement;
+}
+
+export interface AddSongsRequest {
+  songs: ReadonlySet<Song>;
+  playlistId: string;
+  placement: SongPlacement;
+}
+
 export type RightColumnTab = "now" | "structure";
 
 export interface PlayerState {
@@ -91,13 +119,25 @@ export interface PlayerState {
   hasNext: boolean;
   hasPrevious: boolean;
   repeatMode: RepeatMode;
+  isShuffled: boolean;
 }
 
 export type StoredMedia = SongMedia;
 
-export interface StoredSong extends SongDetails {
+export interface StoredLocalSong extends SongDetails {
   id: string;
+  source: "local";
 }
+
+export interface StoredRemoteSong extends SongDetails {
+  id: string;
+  source: "audius";
+  streamUrl: string;
+  coverUrl: string | null;
+  pageUrl: string;
+}
+
+export type StoredSong = StoredLocalSong | StoredRemoteSong;
 
 export interface StoredPlaylist {
   id: string;
@@ -106,11 +146,15 @@ export interface StoredPlaylist {
 }
 
 export interface StoredState {
-  version: 1;
+  version: 2;
   songs: StoredSong[];
   library: string[];
   playlists: StoredPlaylist[];
 }
+
+export type PanelName = "sidebar" | "right";
+
+export type PanelWidths = Record<PanelName, number>;
 
 export interface Preferences {
   volume: number;
@@ -118,6 +162,8 @@ export interface Preferences {
   repeatMode: RepeatMode;
   rightColumnOpen: boolean;
   rightColumnTab: RightColumnTab;
+  panelWidths: PanelWidths;
+  shuffle: boolean;
 }
 
 export interface StorageUsage {

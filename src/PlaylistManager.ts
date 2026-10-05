@@ -1,7 +1,7 @@
 import { comparableText } from "./format";
 import { Playlist } from "./Playlist";
 import { Song } from "./Song";
-import type { AddTracksResult, LoadedTrack, PlaylistNameIssue, StoredPlaylist, StoredSong, StoredState } from "./types";
+import type { AddTracksResult, LoadedTrack, PlaylistNameIssue, StoredPlaylist, StoredSong, StoredState, TrackPlacement } from "./types";
 
 type PlacedHandler = (song: Song, track: LoadedTrack) => void;
 
@@ -72,16 +72,28 @@ export class PlaylistManager {
     return null;
   }
 
-  addTracks(tracks: LoadedTrack[], onPlaced: PlacedHandler = () => {}): AddTracksResult {
+  addTracks(tracks: LoadedTrack[], onPlaced: PlacedHandler = () => {}, placement: TrackPlacement = {}): AddTracksResult {
     const result: AddTracksResult = { added: 0, reconnected: 0, duplicated: 0 };
+    let libraryPosition = placement.libraryPosition ?? this.library.length + 1;
+    let destinationPosition = placement.destination?.position ?? 0;
     for (const track of tracks) {
-      const placed = this.addTrack(track);
+      const placed = this.addTrack(track, libraryPosition);
       result[placed.outcome]++;
+      libraryPosition += placed.outcome === "added" ? 1 : 0;
       if (placed.outcome !== "duplicated") {
         onPlaced(placed.song, track);
       }
+      if (placement.destination !== undefined) {
+        placement.destination.playlist.addAtPosition(placed.song, destinationPosition++);
+      }
     }
     return result;
+  }
+
+  *librarySongs(): Generator<Song, void, undefined> {
+    for (const node of this.library.nodes()) {
+      yield node.value;
+    }
   }
 
   hasUnavailableSongs(): boolean {
@@ -101,7 +113,7 @@ export class PlaylistManager {
       library.push(node.value.id);
     }
     const playlists = [...this.#playlists.values()].map((playlist) => PlaylistManager.storedPlaylist(playlist));
-    return { version: 1, songs: [...songs.values()], library, playlists };
+    return { version: 2, songs: [...songs.values()], library, playlists };
   }
 
   restore(state: StoredState): void {
@@ -110,7 +122,7 @@ export class PlaylistManager {
     }
     const songs = new Map<string, Song>();
     for (const stored of state.songs) {
-      songs.set(stored.id, new Song(stored, stored.id));
+      songs.set(stored.id, PlaylistManager.restoredSong(stored));
     }
     for (const id of state.library) {
       this.library.addAtEnd(PlaylistManager.requireSong(songs, id));
@@ -132,6 +144,15 @@ export class PlaylistManager {
     song.release();
   }
 
+  ensureInLibrary(song: Song): { song: Song; isNew: boolean } {
+    const existing = this.findByFingerprint(song.fingerprint);
+    if (existing !== null) {
+      return { song: existing, isNew: false };
+    }
+    this.library.addAtEnd(song);
+    return { song, isNew: true };
+  }
+
   duplicatePlaylist(id: string): Playlist {
     const source = this.requirePlaylist(id);
     const copy = source.clone(this.uniqueCopyName(source.name));
@@ -139,12 +160,12 @@ export class PlaylistManager {
     return copy;
   }
 
-  private addTrack(track: LoadedTrack): { song: Song; outcome: keyof AddTracksResult } {
+  private addTrack(track: LoadedTrack, libraryPosition: number): { song: Song; outcome: keyof AddTracksResult } {
     const existing = this.findByFingerprint(track.details.fingerprint);
     if (existing === null) {
       const song = new Song(track.details);
       song.attachFile(track);
-      this.library.addAtEnd(song);
+      this.library.addAtPosition(song, libraryPosition);
       return { song, outcome: "added" };
     }
     if (existing.isAvailable()) {
@@ -200,8 +221,20 @@ export class PlaylistManager {
   }
 
   private static storedSong(song: Song): StoredSong {
-    const { id, title, artist, album, duration, fingerprint } = song;
-    return { id, title, artist, album, duration, fingerprint };
+    const { id, title, artist, album, duration, fingerprint, sourceUrl, coverUrl, pageUrl } = song;
+    const details = { id, title, artist, album, duration, fingerprint };
+    if (song.isRemote && sourceUrl !== null && pageUrl !== null) {
+      return { ...details, source: "audius", streamUrl: sourceUrl, coverUrl, pageUrl };
+    }
+    return { ...details, source: "local" };
+  }
+
+  private static restoredSong(stored: StoredSong): Song {
+    const song = new Song(stored, stored.id);
+    if (stored.source === "audius") {
+      song.attachRemote(stored.streamUrl, stored.coverUrl, stored.pageUrl);
+    }
+    return song;
   }
 
   private static storedPlaylist(playlist: Playlist): StoredPlaylist {

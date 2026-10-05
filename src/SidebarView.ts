@@ -1,15 +1,15 @@
 import { DialogView } from "./DialogView";
 import { countLabel, formatMegabytes } from "./format";
+import { createFileInput } from "./fileInput";
 import { createIcon, createIconButton, createLabeledButton, type IconName } from "./icons";
 import type { Playlist } from "./Playlist";
-import type { PlaylistNameIssue, StorageUsage } from "./types";
-
-export type LoadKind = "files" | "folder";
+import type { LoadKind, PlaylistNameIssue, StorageUsage } from "./types";
 
 export interface SidebarData {
   library: Playlist;
   playlists: readonly Playlist[];
   visibleId: string;
+  isExploring: boolean;
 }
 
 type SelectHandler = (playlistId: string) => void;
@@ -21,6 +21,7 @@ export class SidebarView {
   readonly #backdrop: HTMLElement;
   readonly #menuButton = createIconButton("menu", "Abrir menú", "icon-button top-bar-menu");
   readonly #closeButton = createIconButton("close", "Cerrar menú", "icon-button sidebar-close");
+  readonly #exploreItem = SidebarView.createExploreItem();
   readonly #libraryList = Object.assign(document.createElement("ul"), { className: "nav-list" });
   readonly #playlistList = Object.assign(document.createElement("ul"), { className: "nav-list" });
   readonly #fileInputs: Record<LoadKind, HTMLInputElement>;
@@ -30,6 +31,8 @@ export class SidebarView {
   readonly #clearDialog = new DialogView(document.body, "¿Borrar datos guardados?", "Borrar", "danger");
   readonly #storageNote = Object.assign(document.createElement("p"), { className: "storage-note", hidden: true });
   #selectHandler: SelectHandler = () => {};
+  #exploreHandler: () => void = () => {};
+  #shortcutsHandler: () => void = () => {};
   #createHandler: CreateHandler = () => null;
   #filesHandler: FilesHandler = () => {};
   #clearHandler: () => void = () => {};
@@ -37,7 +40,7 @@ export class SidebarView {
   constructor(root: HTMLElement, topBar: HTMLElement, backdrop: HTMLElement) {
     this.#root = root;
     this.#backdrop = backdrop;
-    this.#fileInputs = { files: SidebarView.createFileInput("files"), folder: SidebarView.createFileInput("folder") };
+    this.#fileInputs = { files: createFileInput("files"), folder: createFileInput("folder") };
     this.buildTopBar(topBar);
     this.#root.append(this.createHeader(), this.createNavigation(), this.createLoadSection(), this.createStorageSection());
     this.buildClearDialog();
@@ -47,6 +50,14 @@ export class SidebarView {
 
   onPlaylistSelected(handler: SelectHandler): void {
     this.#selectHandler = handler;
+  }
+
+  onExploreSelected(handler: () => void): void {
+    this.#exploreHandler = handler;
+  }
+
+  onShortcutsRequested(handler: () => void): void {
+    this.#shortcutsHandler = handler;
   }
 
   onCreatePlaylist(handler: CreateHandler): void {
@@ -69,6 +80,11 @@ export class SidebarView {
   }
 
   render(data: SidebarData): void {
+    if (data.isExploring) {
+      this.#exploreItem.setAttribute("aria-current", "page");
+    } else {
+      this.#exploreItem.removeAttribute("aria-current");
+    }
     this.#libraryList.replaceChildren(SidebarView.createItem(data.library, "library", data.visibleId));
     this.#playlistList.replaceChildren();
     for (const playlist of data.playlists) {
@@ -81,7 +97,9 @@ export class SidebarView {
     }
   }
 
-  setPlayback(contextId: string | null, isPlaying: boolean): void {
+  setPlayback(contextId: string | null, isPlaying: boolean, isExploreContext: boolean): void {
+    this.#exploreItem.classList.toggle("is-context", isExploreContext);
+    this.#exploreItem.classList.toggle("is-playing", isExploreContext && isPlaying);
     for (const item of this.#root.querySelectorAll<HTMLElement>("[data-playlist-id]")) {
       const isContext = item.dataset.playlistId === contextId;
       item.classList.toggle("is-context", isContext);
@@ -117,7 +135,13 @@ export class SidebarView {
     nav.setAttribute("aria-label", "Tu música y playlists");
     const newPlaylist = createLabeledButton("plus", "Nueva playlist", "button button-ghost sidebar-button new-playlist");
     newPlaylist.addEventListener("click", () => this.openCreateDialog());
+    const discover = Object.assign(document.createElement("ul"), { className: "nav-list" });
+    const discoverItem = document.createElement("li");
+    discoverItem.append(this.#exploreItem);
+    discover.append(discoverItem);
     nav.append(
+      SidebarView.createHeading("Descubrir"),
+      discover,
       SidebarView.createHeading("Tu música"),
       this.#libraryList,
       SidebarView.createHeading("Playlists"),
@@ -142,7 +166,9 @@ export class SidebarView {
     const section = Object.assign(document.createElement("div"), { className: "sidebar-storage" });
     const clear = createLabeledButton("trash", "Borrar datos guardados", "button button-ghost button-ghost-danger sidebar-button storage-clear");
     clear.addEventListener("click", () => this.#clearDialog.open());
-    section.append(this.#storageNote, clear);
+    const shortcuts = createLabeledButton("keyboard", "Atajos de teclado", "button button-ghost sidebar-button");
+    shortcuts.addEventListener("click", () => this.#shortcutsHandler());
+    section.append(this.#storageNote, shortcuts, clear);
     return section;
   }
 
@@ -175,6 +201,11 @@ export class SidebarView {
 
   private handleNavigationClick(event: MouseEvent): void {
     if (!(event.target instanceof Element)) {
+      return;
+    }
+    if (event.target.closest("[data-explore]") !== null) {
+      this.closeDrawer();
+      this.#exploreHandler();
       return;
     }
     const item = event.target.closest<HTMLElement>("[data-playlist-id]");
@@ -229,6 +260,9 @@ export class SidebarView {
     const item = document.createElement("li");
     const button = Object.assign(document.createElement("button"), { type: "button", className: "nav-item" });
     button.dataset.playlistId = playlist.id;
+    if (!playlist.isLibrary) {
+      button.dataset.dropPlaylist = playlist.id;
+    }
     if (playlist.id === visibleId) {
       button.setAttribute("aria-current", "page");
     }
@@ -240,6 +274,17 @@ export class SidebarView {
     );
     item.append(button);
     return item;
+  }
+
+  private static createExploreItem(): HTMLButtonElement {
+    const button = Object.assign(document.createElement("button"), { type: "button", className: "nav-item" });
+    button.dataset.explore = "";
+    button.append(
+      createIcon("compass"),
+      Object.assign(document.createElement("span"), { className: "nav-name nav-name-fixed", textContent: "Explorar" }),
+      Object.assign(document.createElement("span"), { className: "nav-playing", textContent: "En reproducción" }),
+    );
+    return button;
   }
 
   private static createName(playlist: Playlist): HTMLSpanElement {
@@ -262,18 +307,5 @@ export class SidebarView {
 
   private static createHeading(text: string): HTMLHeadingElement {
     return Object.assign(document.createElement("h2"), { className: "sidebar-heading", textContent: text });
-  }
-
-  private static createFileInput(kind: LoadKind): HTMLInputElement {
-    const input = Object.assign(document.createElement("input"), { type: "file", hidden: true });
-    input.setAttribute("aria-hidden", "true");
-    input.tabIndex = -1;
-    if (kind === "files") {
-      input.multiple = true;
-      input.accept = "audio/*,.lrc";
-    } else {
-      input.webkitdirectory = true;
-    }
-    return input;
   }
 }

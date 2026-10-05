@@ -1,19 +1,18 @@
+import { AddSongsDialogView } from "./AddSongsDialogView";
+import { AddToPlaylistDialogView } from "./AddToPlaylistDialogView";
 import { DialogView } from "./DialogView";
-import { artistLabel, comparableText, countLabel, formatTime, formatTotal } from "./format";
-import { createIcon, createIconButton, createLabeledButton, setButtonIcon, setCover } from "./icons";
+import { DropIndicator } from "./DropIndicator";
+import { createFileInput } from "./fileInput";
+import { FileDropZone } from "./FileDropZone";
+import { comparableText, countLabel, formatTotal } from "./format";
+import { createIcon, createLabeledButton } from "./icons";
 import type { Node } from "./Node";
 import type { Playlist } from "./Playlist";
-import type { LoadKind } from "./SidebarView";
+import { PlaylistHeaderView } from "./PlaylistHeaderView";
+import { RowDragController } from "./RowDragController";
 import type { Song } from "./Song";
-import type { MoveDirection, PlaylistNameIssue } from "./types";
-
-export type SongPlacement = { kind: "start" } | { kind: "end" } | { kind: "position"; position: number };
-
-export interface AddSongRequest {
-  song: Song;
-  playlistId: string;
-  placement: SongPlacement;
-}
+import { createTrackColumns, createTrackRow } from "./trackRow";
+import type { AddSongRequest, AddSongsRequest, LoadKind, MoveDirection, PlaylistNameIssue } from "./types";
 
 export interface TrackListData {
   playlist: Playlist;
@@ -31,23 +30,19 @@ type NodeHandler = (playlistId: string, node: Node<Song>) => void;
 type MoveHandler = (playlistId: string, node: Node<Song>, direction: MoveDirection) => void;
 type PlaylistHandler = (playlistId: string) => void;
 type RenameHandler = (playlistId: string, name: string) => PlaylistNameIssue | null;
-
-const NO_PLAYLISTS = "Primero crea una playlist con «Nueva playlist»";
-const EMPTY_LIBRARY = "Tu biblioteca está vacía. Carga canciones primero.";
+type PositionHandler = (playlistId: string, node: Node<Song>, position: number) => void;
+type PlaylistDropHandler = (targetPlaylistId: string, node: Node<Song>) => void;
+type FilesHandler = (playlistId: string, files: File[], position: number) => void;
 
 export class TrackListView {
   readonly #root: HTMLElement;
-  readonly #header = Object.assign(document.createElement("header"), { className: "list-header" });
-  readonly #eyebrow = Object.assign(document.createElement("p"), { className: "list-eyebrow" });
-  readonly #title = Object.assign(document.createElement("h1"), { className: "list-title", tabIndex: -1 });
-  readonly #meta = Object.assign(document.createElement("p"), { className: "list-meta" });
-  readonly #actions = Object.assign(document.createElement("div"), { className: "list-actions" });
-  readonly #playButton = createIconButton("play", "Reproducir playlist", "icon-button play-button list-play");
   readonly #search = TrackListView.createSearchInput();
   readonly #searchField = Object.assign(document.createElement("label"), { className: "search-field" });
+  readonly #header = new PlaylistHeaderView(this.#searchField);
   readonly #noResults = Object.assign(document.createElement("section"), { className: "search-empty" });
   readonly #noResultsText = Object.assign(document.createElement("p"), { className: "search-empty-text" });
   readonly #content = Object.assign(document.createElement("div"), { className: "list-content" });
+  readonly #importInput = createFileInput("files");
   readonly #rowNodes = new WeakMap<Element, Node<Song>>();
   readonly #rowsByNode = new Map<Node<Song>, HTMLLIElement>();
   readonly #renameDialog = new DialogView(document.body, "Renombrar playlist", "Guardar");
@@ -56,37 +51,25 @@ export class TrackListView {
   readonly #deleteMessage = Object.assign(document.createElement("p"), { className: "dialog-text" });
   readonly #removeDialog = new DialogView(document.body, "¿Quitar de la biblioteca?", "Quitar", "danger");
   readonly #removeMessage = Object.assign(document.createElement("p"), { className: "dialog-text" });
-  readonly #addDialog = new DialogView(document.body, "Agregar canción", "Agregar");
-  readonly #addSummary = Object.assign(document.createElement("p"), { className: "dialog-text" });
-  readonly #songSelect = Object.assign(document.createElement("select"), { className: "select-input" });
-  readonly #destinationSelect = Object.assign(document.createElement("select"), { className: "select-input" });
-  readonly #placementGroup = TrackListView.createPlacementGroup();
-  readonly #positionInput = Object.assign(document.createElement("input"), {
-    type: "number",
-    className: "text-input",
-    min: "1",
-    step: "1",
-    inputMode: "numeric",
-  });
-  readonly #positionHint = Object.assign(document.createElement("span"), { className: "field-hint" });
-  readonly #songOptions = new Map<string, Song>();
-  readonly #destinationOptions = new Map<string, Playlist>();
-  readonly #songField: HTMLLabelElement;
-  readonly #destinationField: HTMLLabelElement;
-  readonly #positionField: HTMLLabelElement;
+  readonly #addSongDialog = new AddToPlaylistDialogView();
+  readonly #addSongsDialog = new AddSongsDialogView();
+  readonly #indicator: DropIndicator;
+  readonly #dragController: RowDragController;
   #data: TrackListData | null = null;
-  #context: Playlist | null = null;
+  #source: Playlist | null = null;
   #isPlaying = false;
   #query = "";
   #pendingSong: Song | null = null;
-  #addTarget: Playlist | null = null;
   #pendingFocus: FocusMemory | null = null;
   #playHandler: NodeHandler = () => {};
   #playPlaylistHandler: PlaylistHandler = () => {};
+  #shuffleHandler: () => void = () => {};
   #removeNodeHandler: NodeHandler = () => {};
   #moveHandler: MoveHandler = () => {};
+  #moveToHandler: PositionHandler = () => {};
+  #dropOnPlaylistHandler: PlaylistDropHandler = () => {};
+  #filesHandler: FilesHandler = () => {};
   #removeSongHandler: (song: Song) => void = () => {};
-  #addHandler: (request: AddSongRequest) => void = () => {};
   #renameHandler: RenameHandler = () => null;
   #deleteHandler: PlaylistHandler = () => {};
   #duplicateHandler: PlaylistHandler = () => {};
@@ -94,13 +77,13 @@ export class TrackListView {
 
   constructor(root: HTMLElement) {
     this.#root = root;
-    this.buildHeader();
-    this.#root.append(this.#header, this.#content);
-    this.#songField = this.#addDialog.addField("Canción", this.#songSelect);
-    this.#destinationField = this.#addDialog.addField("Playlist de destino", this.#destinationSelect);
-    this.#positionField = this.#addDialog.addField("Número de posición", this.#positionInput);
+    this.buildSearch();
+    this.#root.append(this.#header.element, this.#content, this.#importInput);
     this.buildDialogs();
     this.registerEvents();
+    this.#indicator = new DropIndicator(root, (row) => this.#rowNodes.get(row));
+    this.#dragController = this.createDragController();
+    this.createDropZone();
   }
 
   onPlay(handler: NodeHandler): void {
@@ -111,6 +94,10 @@ export class TrackListView {
     this.#playPlaylistHandler = handler;
   }
 
+  onToggleShuffle(handler: () => void): void {
+    this.#shuffleHandler = handler;
+  }
+
   onRemoveNode(handler: NodeHandler): void {
     this.#removeNodeHandler = handler;
   }
@@ -119,12 +106,28 @@ export class TrackListView {
     this.#moveHandler = handler;
   }
 
+  onMoveToPosition(handler: PositionHandler): void {
+    this.#moveToHandler = handler;
+  }
+
+  onDropOnPlaylist(handler: PlaylistDropHandler): void {
+    this.#dropOnPlaylistHandler = handler;
+  }
+
+  onFilesAdded(handler: FilesHandler): void {
+    this.#filesHandler = handler;
+  }
+
   onRemoveFromLibrary(handler: (song: Song) => void): void {
     this.#removeSongHandler = handler;
   }
 
   onAddSong(handler: (request: AddSongRequest) => void): void {
-    this.#addHandler = handler;
+    this.#addSongDialog.onConfirm(handler);
+  }
+
+  onAddSongs(handler: (request: AddSongsRequest) => void): void {
+    this.#addSongsDialog.onConfirm(handler);
   }
 
   onRenamePlaylist(handler: RenameHandler): void {
@@ -144,13 +147,15 @@ export class TrackListView {
   }
 
   render(data: TrackListData): void {
+    this.#dragController.cancel();
     const focus = this.captureFocus();
     const switched = this.#data?.playlist !== data.playlist;
     this.#data = data;
     if (switched) {
       this.resetSearch();
     }
-    this.renderHeader(data.playlist);
+    this.#header.render(data.playlist);
+    this.#searchField.hidden = data.playlist.length === 0;
     this.renderContent(data);
     this.applyFilter();
     this.applyPlayback();
@@ -162,49 +167,88 @@ export class TrackListView {
     }
   }
 
-  setPlayback(context: Playlist | null, isPlaying: boolean): void {
-    this.#context = context;
+  focusSearch(): void {
+    if (!this.#searchField.hidden) {
+      this.#search.focus();
+      this.#search.select();
+    }
+  }
+
+  setPlayback(source: Playlist | null, isPlaying: boolean, isShuffled: boolean): void {
+    this.#source = source;
     this.#isPlaying = isPlaying;
+    this.#header.setShuffle(isShuffled);
     this.applyPlayback();
   }
 
+  private createDragController(): RowDragController {
+    return new RowDragController(this.#root, this.#indicator, {
+      isEnabled: () => this.#query === "",
+      nodeOf: (row) => this.#rowNodes.get(row),
+      onReorder: (node, before) => this.reorder(node, before),
+      onDropOnPlaylist: (targetId, node) => this.#dropOnPlaylistHandler(targetId, node),
+    });
+  }
+
+  private createDropZone(): void {
+    new FileDropZone(this.#root, this.#indicator, {
+      isEnabled: () => this.#data !== null,
+      positionBefore: (before) => this.insertionPosition(before),
+      onDrop: (files, position) => this.dropFiles(files, position),
+    });
+  }
+
+  private reorder(node: Node<Song>, before: Node<Song> | null): void {
+    const playlist = this.#data?.playlist;
+    if (playlist === undefined) {
+      return;
+    }
+    const target = before === null ? playlist.length : playlist.positionOf(before);
+    const position = before !== null && target > playlist.positionOf(node) ? target - 1 : target;
+    this.#moveToHandler(playlist.id, node, position);
+  }
+
+  private insertionPosition(before: Node<Song> | null): number {
+    const playlist = this.#data?.playlist;
+    if (playlist === undefined) {
+      return 1;
+    }
+    return before === null ? playlist.length + 1 : playlist.positionOf(before);
+  }
+
+  private dropFiles(files: File[], position: number): void {
+    const playlist = this.#data?.playlist;
+    if (playlist !== undefined && files.length > 0) {
+      this.#filesHandler(playlist.id, files, position);
+    }
+  }
+
+  private importFiles(): void {
+    const playlist = this.#data?.playlist;
+    const files = Array.from(this.#importInput.files ?? []);
+    this.#importInput.value = "";
+    if (playlist !== undefined && files.length > 0) {
+      this.#filesHandler(playlist.id, files, playlist.length + 1);
+    }
+  }
+
   private applyPlayback(): void {
-    const currentNode = this.#context?.current ?? null;
+    const currentNode = this.#source?.current ?? null;
     for (const [node, row] of this.#rowsByNode) {
       const isCurrent = node === currentNode;
       row.classList.toggle("is-current", isCurrent);
       row.classList.toggle("is-playing", isCurrent && this.#isPlaying);
       row.toggleAttribute("aria-current", isCurrent);
     }
-    this.renderPlayButton();
-  }
-
-  private renderPlayButton(): void {
     const playlist = this.#data?.playlist ?? null;
-    const isPlayingThis = playlist !== null && playlist === this.#context && this.#isPlaying;
-    setButtonIcon(this.#playButton, isPlayingThis ? "pause" : "play", isPlayingThis ? "Pausar" : "Reproducir playlist");
-    this.#playButton.disabled = playlist === null || playlist.length === 0;
+    this.#header.setPlayback(playlist !== null && playlist === this.#source && this.#isPlaying, playlist === null || playlist.length === 0);
   }
 
-  private buildHeader(): void {
-    const heading = Object.assign(document.createElement("div"), { className: "list-heading" });
-    const toolbar = Object.assign(document.createElement("div"), { className: "list-toolbar" });
+  private buildSearch(): void {
     const clear = createLabeledButton("close", "Limpiar búsqueda", "button button-secondary");
-    this.#playButton.dataset.action = "play-playlist";
-    this.#meta.setAttribute("aria-live", "polite");
     clear.dataset.action = "clear-search";
-    heading.append(this.#eyebrow, this.#title, this.#meta);
     this.#searchField.append(createIcon("search"), this.#search);
-    toolbar.append(this.#playButton, this.#searchField);
     this.#noResults.append(this.#noResultsText, clear);
-    this.#header.append(heading, this.#actions, toolbar);
-  }
-
-  private renderHeader(playlist: Playlist): void {
-    this.#eyebrow.textContent = playlist.isLibrary ? "Tu música" : "Playlist";
-    this.#title.textContent = playlist.name;
-    this.#actions.replaceChildren(...TrackListView.createPlaylistButtons(playlist.isLibrary));
-    this.#searchField.hidden = playlist.length === 0;
   }
 
   private renderContent(data: TrackListData): void {
@@ -220,7 +264,7 @@ export class TrackListView {
       list.append(this.createRow(node, position, data.playlist.isLibrary));
       position++;
     }
-    this.#content.replaceChildren(TrackListView.createColumns(), list, this.#noResults);
+    this.#content.replaceChildren(createTrackColumns(), list, this.#noResults);
   }
 
   private applyFilter(): void {
@@ -249,7 +293,7 @@ export class TrackListView {
     const isFiltering = this.#query !== "";
     const total = countLabel(playlist.length, "canción", "canciones");
     const hasNoResults = isFiltering && matches === 0 && playlist.length > 0;
-    this.#meta.textContent = isFiltering ? `${matches} de ${total}` : TrackListView.describe(playlist);
+    this.#header.meta.textContent = isFiltering ? `${matches} de ${total}` : TrackListView.describe(playlist);
     this.#noResultsText.textContent = `Sin resultados para «${this.#search.value.trim()}»`;
     this.#noResults.hidden = !hasNoResults;
     this.#content.classList.toggle("has-no-results", hasNoResults);
@@ -280,20 +324,7 @@ export class TrackListView {
   }
 
   private createRow(node: Node<Song>, position: number, isLibrary: boolean): HTMLLIElement {
-    const song = node.value;
-    const row = Object.assign(document.createElement("li"), { className: "track-row" });
-    row.classList.toggle("is-unavailable", !song.isAvailable());
-    const play = Object.assign(document.createElement("button"), { type: "button", className: "track-main" });
-    play.dataset.action = "play";
-    play.setAttribute("aria-label", `Reproducir ${song.title}`);
-    play.append(
-      TrackListView.createPosition(position),
-      TrackListView.createCover(song),
-      TrackListView.createSongText(song),
-      Object.assign(document.createElement("span"), { className: "track-album", textContent: song.album }),
-      Object.assign(document.createElement("span"), { className: "track-duration", textContent: formatTime(song.duration) }),
-    );
-    row.append(play, TrackListView.createRowActions(node, isLibrary));
+    const row = createTrackRow(node, { position, kind: isLibrary ? "library" : "playlist" });
     this.#rowNodes.set(row, node);
     this.#rowsByNode.set(node, row);
     return row;
@@ -303,8 +334,7 @@ export class TrackListView {
     this.#root.addEventListener("click", (event) => this.handleClick(event));
     this.#search.addEventListener("input", () => this.updateSearch());
     this.#search.addEventListener("keydown", (event) => this.handleSearchKey(event));
-    this.#destinationSelect.addEventListener("change", () => this.updatePositionLimit());
-    this.#placementGroup.addEventListener("change", () => this.updatePositionVisibility());
+    this.#importInput.addEventListener("change", () => this.importFiles());
   }
 
   private handleClick(event: MouseEvent): void {
@@ -338,21 +368,37 @@ export class TrackListView {
   }
 
   private handleViewAction(action: string, playlist: Playlist): void {
-    if (action === "play-playlist") {
-      this.#playPlaylistHandler(playlist.id);
-    } else if (action === "clear-search") {
+    if (action === "load-files" || action === "load-folder") {
+      this.#loadHandler(action === "load-files" ? "files" : "folder");
+      return;
+    }
+    if (this.handlePlaylistAction(action, playlist)) {
+      return;
+    }
+    if (action === "clear-search") {
       this.clearSearch();
-    } else if (action === "add-song") {
-      this.openAddToPlaylist(playlist);
+    } else if (action === "add-songs") {
+      this.openAddSongs(playlist);
+    } else if (action === "import-here") {
+      this.#importInput.click();
     } else if (action === "rename") {
       this.openRename(playlist);
-    } else if (action === "duplicate-playlist") {
-      this.#duplicateHandler(playlist.id);
     } else if (action === "delete-playlist") {
       this.openDelete(playlist);
-    } else if (action === "load-files" || action === "load-folder") {
-      this.#loadHandler(action === "load-files" ? "files" : "folder");
     }
+  }
+
+  private handlePlaylistAction(action: string, playlist: Playlist): boolean {
+    if (action === "play-playlist") {
+      this.#playPlaylistHandler(playlist.id);
+    } else if (action === "toggle-shuffle") {
+      this.#shuffleHandler();
+    } else if (action === "duplicate-playlist") {
+      this.#duplicateHandler(playlist.id);
+    } else {
+      return false;
+    }
+    return true;
   }
 
   private buildDialogs(): void {
@@ -361,13 +407,11 @@ export class TrackListView {
     this.#deleteDialog.onConfirm(() => this.confirmDelete());
     this.#removeDialog.body.append(this.#removeMessage);
     this.#removeDialog.onConfirm(() => this.confirmRemoveFromLibrary());
-    this.#addDialog.body.prepend(this.#addSummary);
-    this.#positionField.before(this.#placementGroup);
-    this.#positionField.append(this.#positionHint);
-    this.#addDialog.onConfirm(() => this.confirmAdd());
-    for (const dialog of [this.#renameDialog, this.#deleteDialog, this.#removeDialog, this.#addDialog]) {
+    for (const dialog of [this.#renameDialog, this.#deleteDialog, this.#removeDialog]) {
       dialog.onClose(() => this.restorePendingFocus());
     }
+    this.#addSongDialog.onClose(() => this.restorePendingFocus());
+    this.#addSongsDialog.onClose(() => this.restorePendingFocus());
   }
 
   private openDialog(dialog: DialogView, focusTarget?: HTMLElement): void {
@@ -417,116 +461,16 @@ export class TrackListView {
   }
 
   private openAddFromSong(song: Song): void {
-    this.#pendingSong = song;
-    this.#addTarget = null;
-    this.#addSummary.textContent = `Canción: ${song.title}`;
-    this.fillDestinations();
-    this.prepareAddDialog(true, this.#destinationOptions.size === 0 ? NO_PLAYLISTS : null);
+    this.#pendingFocus = this.captureFocus();
+    this.#addSongDialog.open(song, this.#data?.playlists ?? [], this.#data?.playlist ?? null);
   }
 
-  private openAddToPlaylist(playlist: Playlist): void {
-    this.#pendingSong = null;
-    this.#addTarget = playlist;
-    this.#addSummary.textContent = `Destino: ${playlist.name}`;
-    this.fillSongs();
-    this.prepareAddDialog(false, this.#songOptions.size === 0 ? EMPTY_LIBRARY : null);
-  }
-
-  private prepareAddDialog(chooseDestination: boolean, warning: string | null): void {
-    this.#destinationField.hidden = !chooseDestination;
-    this.#songField.hidden = chooseDestination;
-    this.#positionInput.value = "";
-    this.setPlacement("end");
-    this.openDialog(this.#addDialog, chooseDestination ? this.#destinationSelect : this.#songSelect);
-    if (warning !== null) {
-      this.#addDialog.showError(warning);
-    }
-  }
-
-  private fillDestinations(): void {
-    this.#destinationOptions.clear();
-    this.#destinationSelect.replaceChildren();
-    for (const playlist of this.#data?.playlists ?? []) {
-      this.#destinationOptions.set(playlist.id, playlist);
-      this.#destinationSelect.append(new Option(`${playlist.name} (${countLabel(playlist.length, "canción", "canciones")})`, playlist.id));
-    }
-    const visible = this.#data?.playlist;
-    if (visible !== undefined && this.#destinationOptions.has(visible.id)) {
-      this.#destinationSelect.value = visible.id;
-    }
-  }
-
-  private fillSongs(): void {
-    this.#songOptions.clear();
-    this.#songSelect.replaceChildren();
+  private openAddSongs(playlist: Playlist): void {
     const library = this.#data?.library;
-    if (library === undefined) {
-      return;
+    if (library !== undefined) {
+      this.#pendingFocus = this.captureFocus();
+      this.#addSongsDialog.open(playlist, library);
     }
-    for (const node of library.nodes()) {
-      const song = node.value;
-      this.#songOptions.set(song.id, song);
-      this.#songSelect.append(new Option(`${song.title} — ${artistLabel(song.artist)}`, song.id));
-    }
-  }
-
-  private confirmAdd(): string | null {
-    const song = this.#pendingSong ?? this.#songOptions.get(this.#songSelect.value) ?? null;
-    const target = this.selectedDestination();
-    if (song === null) {
-      return EMPTY_LIBRARY;
-    }
-    if (target === null) {
-      return NO_PLAYLISTS;
-    }
-    const placement = this.readPlacement(target.length + 1);
-    if (typeof placement === "string") {
-      return placement;
-    }
-    this.#addHandler({ song, playlistId: target.id, placement });
-    return null;
-  }
-
-  private readPlacement(maxPosition: number): SongPlacement | string {
-    const kind = this.checkedPlacement();
-    if (kind !== "position") {
-      return { kind };
-    }
-    const position = Number(this.#positionInput.value);
-    if (this.#positionInput.value.trim() === "" || !Number.isInteger(position) || position < 1 || position > maxPosition) {
-      return `Escribe un número entre 1 y ${maxPosition}`;
-    }
-    return { kind, position };
-  }
-
-  private selectedDestination(): Playlist | null {
-    return this.#addTarget ?? this.#destinationOptions.get(this.#destinationSelect.value) ?? null;
-  }
-
-  private checkedPlacement(): SongPlacement["kind"] {
-    const checked = this.#placementGroup.querySelector<HTMLInputElement>("input:checked");
-    const value = checked?.value;
-    return value === "start" || value === "position" ? value : "end";
-  }
-
-  private setPlacement(kind: SongPlacement["kind"]): void {
-    const radio = this.#placementGroup.querySelector<HTMLInputElement>(`input[value="${kind}"]`);
-    if (radio !== null) {
-      radio.checked = true;
-    }
-    this.updatePositionVisibility();
-  }
-
-  private updatePositionVisibility(): void {
-    this.#positionField.hidden = this.checkedPlacement() !== "position";
-    this.updatePositionLimit();
-    this.#addDialog.clearError();
-  }
-
-  private updatePositionLimit(): void {
-    const maxPosition = (this.selectedDestination()?.length ?? 0) + 1;
-    this.#positionInput.max = String(maxPosition);
-    this.#positionHint.textContent = `Entre 1 y ${maxPosition}`;
   }
 
   private captureFocus(): FocusMemory | null {
@@ -555,7 +499,7 @@ export class TrackListView {
       }
     }
     const control = memory.action === "" ? null : this.#root.querySelector<HTMLElement>(`[data-action="${memory.action}"]`);
-    (control ?? this.#title).focus();
+    (control ?? this.#header.title).focus();
   }
 
   private restorePendingFocus(): void {
@@ -576,21 +520,6 @@ export class TrackListView {
     return playlist.length === 0 ? count : `${count} · ${formatTotal(playlist.totalDuration())}`;
   }
 
-  private static createPlaylistButtons(isLibrary: boolean): HTMLButtonElement[] {
-    const duplicate = createLabeledButton("copy", "Duplicar", "button button-secondary");
-    duplicate.dataset.action = "duplicate-playlist";
-    if (isLibrary) {
-      return [duplicate];
-    }
-    const add = createLabeledButton("plus", "Agregar canción", "button button-primary");
-    const rename = createLabeledButton("edit", "Renombrar", "button button-secondary");
-    const remove = createLabeledButton("trash", "Eliminar playlist", "button button-ghost button-ghost-danger");
-    add.dataset.action = "add-song";
-    rename.dataset.action = "rename";
-    remove.dataset.action = "delete-playlist";
-    return [add, rename, duplicate, remove];
-  }
-
   private static createEmptyState(data: TrackListData): HTMLElement {
     const card = Object.assign(document.createElement("section"), { className: "empty-state" });
     const icon = Object.assign(document.createElement("span"), { className: "empty-icon" });
@@ -600,11 +529,11 @@ export class TrackListView {
     card.append(icon, title, text);
     if (data.playlist.isLibrary) {
       title.textContent = "Carga tu primera canción";
-      text.textContent = "Elige archivos de audio o una carpeta de tu computador. Se reproducen aquí mismo y nunca se suben a internet.";
+      text.textContent = "Elige archivos de audio o una carpeta de tu computador, o suéltalos aquí. Se reproducen aquí mismo y nunca se suben a internet.";
       card.append(TrackListView.createLoadActions(data.isLoading));
     } else {
       title.textContent = "Esta playlist está vacía";
-      text.textContent = "Agrega canciones desde la Biblioteca";
+      text.textContent = "Usa «Agregar canciones» para elegir de tu biblioteca, o suelta archivos aquí.";
     }
     return card;
   }
@@ -621,62 +550,6 @@ export class TrackListView {
     return actions;
   }
 
-  private static createColumns(): HTMLDivElement {
-    const columns = Object.assign(document.createElement("div"), { className: "track-columns" });
-    columns.setAttribute("aria-hidden", "true");
-    for (const [className, text] of [
-      ["track-position", "#"],
-      ["track-columns-title", "Título"],
-      ["track-album", "Álbum"],
-      ["track-duration", "Duración"],
-    ]) {
-      columns.append(Object.assign(document.createElement("span"), { className, textContent: text }));
-    }
-    return columns;
-  }
-
-  private static createPosition(position: number): HTMLSpanElement {
-    const cell = Object.assign(document.createElement("span"), { className: "track-position" });
-    const bars = Object.assign(document.createElement("span"), { className: "track-bars" });
-    bars.append(document.createElement("span"), document.createElement("span"), document.createElement("span"));
-    cell.append(Object.assign(document.createElement("span"), { className: "track-number", textContent: String(position) }), bars);
-    return cell;
-  }
-
-  private static createCover(song: Song): HTMLSpanElement {
-    const cover = Object.assign(document.createElement("span"), { className: "cover track-cover" });
-    setCover(cover, song.coverUrl);
-    return cover;
-  }
-
-  private static createSongText(song: Song): HTMLSpanElement {
-    const text = Object.assign(document.createElement("span"), { className: "track-text" });
-    const detail = song.isAvailable() ? artistLabel(song.artist) : "Archivo no disponible";
-    text.append(
-      Object.assign(document.createElement("span"), { className: "track-title", textContent: song.title }),
-      Object.assign(document.createElement("span"), { className: "track-artist", textContent: detail }),
-    );
-    return text;
-  }
-
-  private static createRowActions(node: Node<Song>, isLibrary: boolean): HTMLSpanElement {
-    const song = node.value;
-    const actions = Object.assign(document.createElement("span"), { className: "track-actions" });
-    const up = createIconButton("chevronUp", `Subir «${song.title}»`, "icon-button track-action track-move");
-    const down = createIconButton("chevronDown", `Bajar «${song.title}»`, "icon-button track-action track-move");
-    const add = createIconButton("plus", `Agregar «${song.title}» a una playlist`, "icon-button track-action");
-    const removeLabel = isLibrary ? "Eliminar de la biblioteca" : "Quitar de esta playlist";
-    const remove = createIconButton("trash", `${removeLabel}: ${song.title}`, "icon-button track-action track-action-danger");
-    up.dataset.action = "move-up";
-    down.dataset.action = "move-down";
-    up.disabled = node.prev === null;
-    down.disabled = node.next === null;
-    add.dataset.action = "add";
-    remove.dataset.action = "remove";
-    actions.append(up, down, add, remove);
-    return actions;
-  }
-
   private static createSearchInput(): HTMLInputElement {
     const input = Object.assign(document.createElement("input"), {
       type: "search",
@@ -687,21 +560,5 @@ export class TrackListView {
     });
     input.setAttribute("aria-label", "Buscar en esta lista");
     return input;
-  }
-
-  private static createPlacementGroup(): HTMLFieldSetElement {
-    const group = Object.assign(document.createElement("fieldset"), { className: "placement-group" });
-    group.append(Object.assign(document.createElement("legend"), { className: "field-label", textContent: "¿En qué posición?" }));
-    for (const [value, text] of [
-      ["start", "Inicio"],
-      ["end", "Final"],
-      ["position", "Posición"],
-    ]) {
-      const label = Object.assign(document.createElement("label"), { className: "placement-option" });
-      const radio = Object.assign(document.createElement("input"), { type: "radio", name: "placement", value });
-      label.append(radio, Object.assign(document.createElement("span"), { textContent: text }));
-      group.append(label);
-    }
-    return group;
   }
 }

@@ -20,6 +20,7 @@ export class PlayerBarView {
   readonly #cover = Object.assign(document.createElement("div"), { className: "cover player-cover" });
   readonly #title = Object.assign(document.createElement("p"), { className: "player-title" });
   readonly #artist = Object.assign(document.createElement("p"), { className: "player-artist" });
+  readonly #shuffle = createIconButton("shuffle", "Aleatorio", "icon-button player-shuffle");
   readonly #previous = createIconButton("previous", "Anterior", "icon-button player-step");
   readonly #toggle = createIconButton("play", "Reproducir", "icon-button play-button player-toggle");
   readonly #next = createIconButton("next", "Siguiente", "icon-button player-step");
@@ -33,6 +34,7 @@ export class PlayerBarView {
   #isSeeking = false;
   #coverUrl: string | null | undefined;
   #repeatMode: RepeatMode | null = null;
+  #shuffleHandler: ActionHandler = () => {};
   #previousHandler: ActionHandler = () => {};
   #toggleHandler: ActionHandler = () => {};
   #nextHandler: ActionHandler = () => {};
@@ -46,6 +48,7 @@ export class PlayerBarView {
   constructor(root: HTMLElement) {
     this.#volume.max = "1";
     this.#structure.setAttribute("aria-pressed", "false");
+    this.#shuffle.setAttribute("aria-pressed", "false");
     root.append(this.createNowPlaying(), this.createCenter(), this.createExtras());
     this.registerEvents();
   }
@@ -64,6 +67,10 @@ export class PlayerBarView {
 
   onCycleRepeat(handler: ActionHandler): void {
     this.#repeatHandler = handler;
+  }
+
+  onToggleShuffle(handler: ActionHandler): void {
+    this.#shuffleHandler = handler;
   }
 
   onToggleNowPlaying(handler: ActionHandler): void {
@@ -100,6 +107,7 @@ export class PlayerBarView {
     this.renderSong(state.song);
     this.renderControls(state);
     this.renderRepeat(state.repeatMode);
+    this.renderShuffle(state.isShuffled);
     this.renderVolume(state.volume, state.isMuted);
     this.updateProgress(state.currentTime, state.duration);
   }
@@ -136,6 +144,12 @@ export class PlayerBarView {
     const { icon, label } = REPEAT_BUTTONS[mode];
     setButtonIcon(this.#repeat, icon, label);
     this.#repeat.classList.toggle("is-active", mode !== "off");
+  }
+
+  private renderShuffle(isOn: boolean): void {
+    this.#shuffle.classList.toggle("is-active", isOn);
+    this.#shuffle.setAttribute("aria-pressed", String(isOn));
+    this.#shuffle.title = isOn ? "Aleatorio: activado" : "Aleatorio: desactivado";
   }
 
   private renderControls(state: PlayerState): void {
@@ -176,7 +190,7 @@ export class PlayerBarView {
     const center = Object.assign(document.createElement("div"), { className: "player-center" });
     const controls = Object.assign(document.createElement("div"), { className: "player-controls" });
     const timeline = Object.assign(document.createElement("div"), { className: "player-timeline" });
-    controls.append(this.#previous, this.#toggle, this.#next, this.#repeat);
+    controls.append(this.#shuffle, this.#previous, this.#toggle, this.#next, this.#repeat);
     timeline.append(this.#elapsed, this.#seek, this.#total);
     center.append(controls, timeline);
     return center;
@@ -195,6 +209,7 @@ export class PlayerBarView {
     this.#toggle.addEventListener("click", () => this.#toggleHandler());
     this.#next.addEventListener("click", () => this.#nextHandler());
     this.#repeat.addEventListener("click", () => this.#repeatHandler());
+    this.#shuffle.addEventListener("click", () => this.#shuffleHandler());
     this.#now.addEventListener("click", () => this.requestNowPlaying());
     this.#structure.addEventListener("click", () => this.#rightColumnHandler());
     this.#mute.addEventListener("click", () => this.#muteHandler());

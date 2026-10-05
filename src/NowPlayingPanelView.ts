@@ -29,6 +29,8 @@ const SIDE_WRAP_NOTES: Record<Side, string> = { previous: "(vuelve al final)", n
 export class NowPlayingPanelView {
   readonly #root: HTMLElement;
   readonly #origin = Object.assign(document.createElement("p"), { className: "sounding-origin" });
+  readonly #shuffleNote = Object.assign(document.createElement("p"), { className: "sounding-shuffle", textContent: "Orden aleatorio", hidden: true });
+  readonly #nodeLine = Object.assign(document.createElement("p"), { className: "sounding-node" });
   readonly #expand = createIconButton("expand", "Abrir reproduciendo ahora", "icon-button sounding-expand");
   readonly #cover = Object.assign(document.createElement("div"), { className: "cover sounding-cover" });
   readonly #title = Object.assign(document.createElement("h3"), { className: "sounding-title" });
@@ -44,6 +46,7 @@ export class NowPlayingPanelView {
   #context: Playlist | null = null;
   #currentNode: Node<Song> | null = null;
   #repeatMode: RepeatMode = "off";
+  #isShuffled = false;
   #coverUrl: string | null | undefined;
   #isStale = true;
   #playHandler: (node: Node<Song>) => void = () => {};
@@ -76,13 +79,14 @@ export class NowPlayingPanelView {
 
   render(state: PlayerState, context: Playlist | null): void {
     const current = context?.current ?? null;
-    if (!this.#isStale && current === this.#currentNode && context === this.#context && state.repeatMode === this.#repeatMode) {
+    if (!this.#isStale && current === this.#currentNode && context === this.#context && state.repeatMode === this.#repeatMode && state.isShuffled === this.#isShuffled) {
       return;
     }
     this.#isStale = false;
     this.#context = context;
     this.#currentNode = current;
     this.#repeatMode = state.repeatMode;
+    this.#isShuffled = state.isShuffled;
     const isEmpty = context === null || current === null;
     this.#empty.hidden = !isEmpty;
     this.#content.hidden = isEmpty;
@@ -95,6 +99,8 @@ export class NowPlayingPanelView {
     const song = current.value;
     this.#origin.textContent = `Sonando desde «${context.name}»`;
     this.#origin.title = context.name;
+    this.#shuffleNote.hidden = !this.#isShuffled;
+    this.#nodeLine.textContent = `nodo [${context.positionOf(current) - 1}] · length ${context.length}`;
     this.#title.textContent = song.title;
     this.#title.title = song.title;
     this.#artist.textContent = artistLabel(song.artist);
@@ -167,13 +173,15 @@ export class NowPlayingPanelView {
 
   private createHeader(): HTMLElement {
     const header = Object.assign(document.createElement("header"), { className: "sounding-header" });
-    header.append(this.#origin, this.#expand);
+    const origin = Object.assign(document.createElement("div"), { className: "sounding-origin-box" });
+    origin.append(this.#origin, this.#shuffleNote);
+    header.append(origin, this.#expand);
     return header;
   }
 
   private createMeta(): HTMLElement {
     const meta = Object.assign(document.createElement("div"), { className: "sounding-meta" });
-    meta.append(this.#title, this.#artist);
+    meta.append(this.#title, this.#artist, this.#nodeLine);
     return meta;
   }
 

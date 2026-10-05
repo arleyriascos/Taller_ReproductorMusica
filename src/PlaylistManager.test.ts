@@ -231,6 +231,151 @@ describe("PlaylistManager addTracks", () => {
   });
 });
 
+describe("PlaylistManager addTracks placement", () => {
+  function titles(songs: readonly Song[]): string[] {
+    return songs.map((song) => song.title);
+  }
+
+  function playlistTitles(manager: PlaylistManager, id: string): string[] {
+    const playlist = manager.getPlaylist(id);
+    return playlist === null ? [] : titles([...playlist.nodes()].map((node) => node.value));
+  }
+
+  it("inserts new songs consecutively at the library position", () => {
+    const manager = new PlaylistManager();
+    manager.addTracks([trackFor("a.mp3"), trackFor("b.mp3"), trackFor("c.mp3")]);
+    const result = manager.addTracks([trackFor("x.mp3"), trackFor("y.mp3")], () => {}, { libraryPosition: 2 });
+    expect(result).toEqual({ added: 2, reconnected: 0, duplicated: 0 });
+    expect(titles(librarySongs(manager))).toEqual(["a.mp3", "x.mp3", "y.mp3", "b.mp3", "c.mp3"]);
+  });
+
+  it("inserts at the first and at the last library position", () => {
+    const manager = new PlaylistManager();
+    manager.addTracks([trackFor("a.mp3")]);
+    manager.addTracks([trackFor("x.mp3")], () => {}, { libraryPosition: 1 });
+    manager.addTracks([trackFor("y.mp3")], () => {}, { libraryPosition: 3 });
+    expect(titles(librarySongs(manager))).toEqual(["x.mp3", "a.mp3", "y.mp3"]);
+  });
+
+  it("keeps the position of reconnected and duplicated songs in the library", () => {
+    const manager = new PlaylistManager();
+    manager.addTracks([trackFor("a.mp3"), trackFor("b.mp3")]);
+    const [first] = librarySongs(manager);
+    first.release();
+    const result = manager.addTracks([trackFor("a.mp3"), trackFor("b.mp3"), trackFor("x.mp3")], () => {}, { libraryPosition: 2 });
+    expect(result).toEqual({ added: 1, reconnected: 1, duplicated: 1 });
+    expect(titles(librarySongs(manager))).toEqual(["a.mp3", "x.mp3", "b.mp3"]);
+  });
+
+  it("sends new songs to the library end and every song to the playlist position", () => {
+    const manager = new PlaylistManager();
+    manager.addTracks([trackFor("a.mp3"), trackFor("b.mp3")]);
+    const playlist = manager.createPlaylist("Mix");
+    for (const song of librarySongs(manager)) {
+      playlist.addAtEnd(song);
+    }
+    const result = manager.addTracks([trackFor("b.mp3"), trackFor("x.mp3")], () => {}, { destination: { playlist, position: 2 } });
+    expect(result).toEqual({ added: 1, reconnected: 0, duplicated: 1 });
+    expect(titles(librarySongs(manager))).toEqual(["a.mp3", "b.mp3", "x.mp3"]);
+    expect(playlistTitles(manager, playlist.id)).toEqual(["a.mp3", "b.mp3", "x.mp3", "b.mp3"]);
+  });
+
+  it("appends to the playlist end when the position is the next one", () => {
+    const manager = new PlaylistManager();
+    const playlist = manager.createPlaylist("Mix");
+    manager.addTracks([trackFor("a.mp3"), trackFor("b.mp3")], () => {}, { destination: { playlist, position: 1 } });
+    manager.addTracks([trackFor("c.mp3")], () => {}, { destination: { playlist, position: playlist.length + 1 } });
+    expect(playlistTitles(manager, playlist.id)).toEqual(["a.mp3", "b.mp3", "c.mp3"]);
+  });
+});
+
+function remoteSong(trackId: string): Song {
+  const song = new Song({ title: `Remota ${trackId}`, artist: "Artista", album: "", duration: 80, fingerprint: `audius:${trackId}` });
+  song.attachRemote(`https://api.audius.co/v1/tracks/${trackId}/stream?app_name=Musongs`, `https://img.example.test/${trackId}.jpg`, `https://audius.co/artista/${trackId}`);
+  return song;
+}
+
+describe("PlaylistManager remote songs", () => {
+  it("ensureInLibrary appends a new remote song and reports it as new", () => {
+    const manager = new PlaylistManager();
+    manager.addTracks([trackFor("a.mp3")]);
+    const remote = remoteSong("r1");
+    const placed = manager.ensureInLibrary(remote);
+    expect(placed).toEqual({ song: remote, isNew: true });
+    expect(librarySongs(manager)).toHaveLength(2);
+    expect(librarySongs(manager)[1]).toBe(remote);
+  });
+
+  it("ensureInLibrary reuses the library song with the same fingerprint", () => {
+    const manager = new PlaylistManager();
+    const first = remoteSong("r1");
+    manager.ensureInLibrary(first);
+    const placed = manager.ensureInLibrary(remoteSong("r1"));
+    expect(placed.song).toBe(first);
+    expect(placed.isNew).toBe(false);
+    expect(manager.library.length).toBe(1);
+  });
+
+  it("ensureInLibrary returns an existing local song untouched", () => {
+    const manager = new PlaylistManager();
+    manager.addTracks([trackFor("a.mp3")]);
+    const [local] = librarySongs(manager);
+    expect(manager.ensureInLibrary(local)).toEqual({ song: local, isNew: false });
+    expect(manager.library.length).toBe(1);
+  });
+
+  it("serializes remote songs with their URLs and restores them as available remote songs", () => {
+    const manager = new PlaylistManager();
+    manager.addTracks([trackFor("a.mp3")]);
+    const remote = manager.ensureInLibrary(remoteSong("r1")).song;
+    const mix = manager.createPlaylist("Mix");
+    mix.addAtEnd(remote);
+    const state = manager.toStoredState();
+    const stored = state.songs[1];
+    expect(stored).toMatchObject({
+      source: "audius",
+      fingerprint: "audius:r1",
+      streamUrl: "https://api.audius.co/v1/tracks/r1/stream?app_name=Musongs",
+      coverUrl: "https://img.example.test/r1.jpg",
+      pageUrl: "https://audius.co/artista/r1",
+    });
+    expect(state.songs[0].source).toBe("local");
+    const restored = new PlaylistManager();
+    restored.restore(JSON.parse(JSON.stringify(state)));
+    const [local, back] = librarySongs(restored);
+    expect(local.isAvailable()).toBe(false);
+    expect([back.isRemote, back.isAvailable(), back.sourceUrl, back.coverUrl, back.pageUrl]).toEqual([true, true, remote.sourceUrl, remote.coverUrl, remote.pageUrl]);
+    expect(restored.toStoredState()).toEqual(state);
+  });
+
+  it("restores a remote song without cover", () => {
+    const manager = new PlaylistManager();
+    const remote = new Song({ title: "Sin portada", artist: "", album: "", duration: 10, fingerprint: "audius:r9" });
+    remote.attachRemote("https://api.audius.co/v1/tracks/r9/stream?app_name=Musongs", null, "https://audius.co/x/r9");
+    manager.ensureInLibrary(remote);
+    const restored = new PlaylistManager();
+    restored.restore(manager.toStoredState());
+    expect(librarySongs(restored)[0].coverUrl).toBeNull();
+  });
+
+  it("removeSongEverywhere removes a remote song from every list and keeps it playable elsewhere", () => {
+    const manager = new PlaylistManager();
+    const remote = manager.ensureInLibrary(remoteSong("r1")).song;
+    const mix = manager.createPlaylist("Mix");
+    mix.addAtEnd(remote);
+    manager.removeSongEverywhere(remote);
+    expect(manager.library.length).toBe(0);
+    expect(mix.length).toBe(0);
+    expect(remote.isAvailable()).toBe(true);
+  });
+
+  it("does not report remote songs as unavailable", () => {
+    const manager = new PlaylistManager();
+    manager.ensureInLibrary(remoteSong("r1"));
+    expect(manager.hasUnavailableSongs()).toBe(false);
+  });
+});
+
 describe("PlaylistManager removeSongEverywhere", () => {
   it("removes the song from every list and makes it unavailable", () => {
     const manager = new PlaylistManager();
@@ -331,7 +476,7 @@ describe("PlaylistManager persistence", () => {
   it("serializes the library, the playlists and the songs in forward order", () => {
     const state = populated().toStoredState();
     const [a, b, c] = state.songs;
-    expect(state.version).toBe(1);
+    expect(state.version).toBe(2);
     expect(state.songs.map((song) => song.title)).toEqual(["a.mp3", "b.mp3", "c.mp3"]);
     expect(state.library).toEqual([a.id, b.id, c.id]);
     expect(state.playlists.map((playlist) => playlist.name)).toEqual(["Rock", "Vacía"]);
@@ -342,7 +487,8 @@ describe("PlaylistManager persistence", () => {
   it("stores only plain data that survives JSON", () => {
     const state = populated().toStoredState();
     expect(JSON.parse(JSON.stringify(state))).toEqual(state);
-    expect(Object.keys(state.songs[0]).sort()).toEqual(["album", "artist", "duration", "fingerprint", "id", "title"]);
+    expect(Object.keys(state.songs[0]).sort()).toEqual(["album", "artist", "duration", "fingerprint", "id", "source", "title"]);
+    expect(state.songs.every((song) => song.source === "local")).toBe(true);
   });
 
   it("round trips keeping order, duplicates inside a playlist and ids", () => {

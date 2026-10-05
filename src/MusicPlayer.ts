@@ -1,7 +1,7 @@
 import type { Node } from "./Node";
 import type { Playlist } from "./Playlist";
 import type { Song } from "./Song";
-import type { PlayerErrorCode, PlayerState, RepeatMode } from "./types";
+import type { PlayerErrorCode, PlayerState, RepeatMode, TraversalDirection } from "./types";
 
 type StateListener = (state: PlayerState) => void;
 type ProgressListener = (currentTime: number, duration: number) => void;
@@ -16,6 +16,9 @@ export class MusicPlayer {
   readonly #audio: HTMLAudioElement;
   readonly #mediaSession: MediaSession | null = "mediaSession" in navigator ? navigator.mediaSession : null;
   #context: Playlist | null = null;
+  #source: Playlist | null = null;
+  #isShuffled = false;
+  readonly #random: () => number = Math.random;
   #loadedSong: Song | null = null;
   #volume = DEFAULT_VOLUME;
   #muted = false;
@@ -41,6 +44,14 @@ export class MusicPlayer {
     return this.#context;
   }
 
+  get source(): Playlist | null {
+    return this.#source;
+  }
+
+  get isShuffled(): boolean {
+    return this.#isShuffled;
+  }
+
   onStateChange(callback: StateListener): void {
     this.#stateListener = callback;
   }
@@ -61,9 +72,10 @@ export class MusicPlayer {
       duration: this.duration(),
       volume: this.#volume,
       isMuted: this.#muted,
-      hasNext: this.canMove((context) => context.hasNext()),
-      hasPrevious: this.canMove((context) => context.hasPrevious()),
+      hasNext: this.findAvailable("next") !== null,
+      hasPrevious: this.findAvailable("previous") !== null,
       repeatMode: this.#repeatMode,
+      isShuffled: this.#isShuffled,
     };
   }
 
@@ -72,8 +84,11 @@ export class MusicPlayer {
       this.#errorListener?.("unavailable", node.value);
       return;
     }
-    playlist.select(node);
-    this.#context = playlist;
+    if (playlist === this.#context) {
+      this.selectInContext(node);
+    } else {
+      this.adopt(playlist, node);
+    }
     this.playSong(node.value);
   }
 
@@ -91,11 +106,15 @@ export class MusicPlayer {
   }
 
   next(): void {
-    this.playNode(this.move((context) => context.next(), (context) => context.selectFirst()));
+    this.step("next");
   }
 
   previous(): void {
-    this.playNode(this.move((context) => context.previous(), (context) => context.selectLast()));
+    this.step("previous");
+  }
+
+  seekBy(offset: number): void {
+    this.seek(this.#audio.currentTime + offset);
   }
 
   seek(seconds: number): void {
@@ -104,6 +123,10 @@ export class MusicPlayer {
     }
     this.#audio.currentTime = MusicPlayer.clamp(seconds, 0, this.duration());
     this.notifyProgress();
+  }
+
+  changeVolume(delta: number): void {
+    this.setVolume(Math.round((this.#volume + delta) * 10) / 10);
   }
 
   setVolume(value: number): void {
@@ -131,11 +154,24 @@ export class MusicPlayer {
     this.notifyState();
   }
 
+  setShuffle(isOn: boolean): void {
+    this.#isShuffled = isOn;
+    if (this.#source !== null) {
+      this.#context = isOn ? this.shuffledCopyOf(this.#source) : this.#source;
+    }
+    this.notifyState();
+  }
+
+  toggleShuffle(): void {
+    this.setShuffle(!this.#isShuffled);
+  }
+
   cycleRepeatMode(): void {
     this.setRepeatMode(NEXT_REPEAT_MODE[this.#repeatMode]);
   }
 
   refresh(): void {
+    this.rebuildShuffle();
     const current = this.#context?.current ?? null;
     if (current === null) {
       this.unload();
@@ -159,6 +195,7 @@ export class MusicPlayer {
 
   clearContext(): void {
     this.#context = null;
+    this.#source = null;
     this.unload();
   }
 
@@ -200,30 +237,43 @@ export class MusicPlayer {
     }
   }
 
-  private seekBy(offset: number): void {
-    this.seek(this.#audio.currentTime + offset);
+  private findAvailable(direction: TraversalDirection): Node<Song> | null {
+    return this.#context?.findAvailable(direction, this.#repeatMode === "all") ?? null;
   }
 
-  private canMove(step: (context: Playlist) => boolean): boolean {
-    const context = this.#context;
-    return context !== null && (step(context) || this.wrapsAround(context));
+  private step(direction: TraversalDirection): void {
+    const node = this.findAvailable(direction);
+    if (node !== null) {
+      this.selectInContext(node);
+      this.playSong(node.value);
+    }
   }
 
-  private move(step: (context: Playlist) => Node<Song> | null, wrap: (context: Playlist) => Node<Song> | null): Node<Song> | null {
+  private selectInContext(node: Node<Song>): void {
     const context = this.#context;
     if (context === null) {
-      return null;
+      return;
     }
-    return step(context) ?? (this.wrapsAround(context) ? wrap(context) : null);
+    context.select(node);
+    const origin = this.#source === context ? null : context.originOf(node);
+    if (origin !== null) {
+      this.#source?.select(origin);
+    }
   }
 
-  private wrapsAround(context: Playlist): boolean {
-    return this.#repeatMode === "all" && context.length > 0;
+  private adopt(playlist: Playlist, node: Node<Song>): void {
+    playlist.select(node);
+    this.#source = playlist;
+    this.#context = this.#isShuffled ? this.shuffledCopyOf(playlist) : playlist;
   }
 
-  private playNode(node: Node<Song> | null): void {
-    if (node !== null) {
-      this.playSong(node.value);
+  private shuffledCopyOf(source: Playlist): Playlist {
+    return source.shuffledCopy(this.#random, source.current);
+  }
+
+  private rebuildShuffle(): void {
+    if (this.#source !== null && this.#context !== this.#source) {
+      this.#context = this.shuffledCopyOf(this.#source);
     }
   }
 
@@ -277,7 +327,7 @@ export class MusicPlayer {
       this.restart();
       return;
     }
-    if (this.canMove((context) => context.hasNext())) {
+    if (this.findAvailable("next") !== null) {
       this.next();
       return;
     }

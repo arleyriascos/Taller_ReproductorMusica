@@ -1,3 +1,4 @@
+import type { Song } from "./Song";
 import type { StorageUsage, StoredMedia } from "./types";
 
 type FailureHandler = () => void;
@@ -34,6 +35,22 @@ export class AudioStore {
     await this.run("readwrite", (store) => store.delete(songId));
   }
 
+  async reattach(songs: Iterable<Song>): Promise<void> {
+    const pending: Promise<void>[] = [];
+    for (const song of songs) {
+      if (!song.isRemote) {
+        pending.push(this.reattachOne(song));
+      }
+    }
+    await Promise.all(pending);
+  }
+
+  async forget(song: Song): Promise<void> {
+    if (!song.isRemote) {
+      await this.delete(song.id);
+    }
+  }
+
   async clear(): Promise<void> {
     await this.run("readwrite", (store) => store.clear());
   }
@@ -45,6 +62,13 @@ export class AudioStore {
       return null;
     }
     return { songs, bytes: values.filter(AudioStore.isMedia).reduce((total, media) => total + AudioStore.sizeOf(media), 0) };
+  }
+
+  private async reattachOne(song: Song): Promise<void> {
+    const media = await this.get(song.id);
+    if (media !== null) {
+      song.attachFile(media);
+    }
   }
 
   private async run<T>(mode: IDBTransactionMode, operation: (store: IDBObjectStore) => IDBRequest<T>): Promise<T | null> {

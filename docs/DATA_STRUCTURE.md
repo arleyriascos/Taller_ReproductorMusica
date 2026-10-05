@@ -91,10 +91,29 @@ Contract implemented by `DoublyLinkedList<T>` and `TrackedLinkedList<T>`.
 - Next: if `current.next` exists, `current = current.next`.
 - Previous: if `current.prev` exists, `current = current.prev`.
 - `hasNext()` is `current?.next != null`; the UI disables the button otherwise.
+- Skip unavailable songs: `findAvailable(direction, wrap)` repeats the step above (`next` or `prev`, and `head` / `tail` when `wrap` is true) up to `length` times and returns the first node whose song is available, so a missing file is skipped without leaving the links. After one full cycle it returns `null` and playback stops.
 - Remove current: `replacement = current.next ?? current.prev`, `removeNode(current)`, `current = replacement`.
 - Move: `moveUp(node)` / `moveDown(node)` call `moveNode(node, index ∓ 1)`; they do nothing at `head` / `tail`. `current` is a node reference, so it stays on the same song after a move.
+- Drag and drop: `moveToPosition(node, position)` validates the 1-based position and calls `moveNode(node, position - 1)`; `moveUp` and `moveDown` call it too. Dropping on the same place does nothing and records nothing.
 - Positions shown to the user start at 1. `Playlist` is the only place that converts position to index.
 
-## 8. Song is not Node
+## 8. Shuffle: Fisher–Yates with `moveNode`
+
+Shuffle never reorders the Library or a playlist the user sees. `shuffledCopy` clones the playlist (Prototype: new nodes, same songs) and shuffles the copy in place:
+
+```
+for i from length - 1 down to 1:
+    j = random integer in [0, i]
+    node = node at index j
+    moveNode(node, i)        // only the links of that node and its neighbours change
+```
+
+- The prefix `[0, i]` is the part that is still unshuffled; each step takes one node out of it with `unlink` and puts it at index `i`, which fixes the final position of that node. After the loop every permutation was possible, with the same probability when `random` is uniform.
+- Only `moveNode` is used: no array of songs, no swap of values. Nodes keep their identity, so the invariants of section 4 hold after every step (the tests check them with a deterministic `random`).
+- Finding the node at `j` is `traverseToIndex(j)`, which walks from the nearer end; the whole shuffle is O(n²) in the worst case, fine for a music library.
+- After the loop the song that is playing is moved to the head (`moveToPosition(node, 1)`) and selected, so playback continues and "next" follows the shuffled links.
+- The copy keeps a `WeakMap` from each of its nodes to the original node, so selections in the copy can be mirrored in the original.
+
+## 9. Song is not Node
 
 The same `Song` object can be the `value` of many nodes: one in the Library and others in playlists, even twice in the same playlist. Each node has its own `next` and `prev`. Removing a node never destroys its `Song`; only removing from the Library does.

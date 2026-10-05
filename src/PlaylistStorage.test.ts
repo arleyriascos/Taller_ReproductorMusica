@@ -40,6 +40,28 @@ class FakeStorage implements Storage {
 }
 
 const STATE: StoredState = {
+  version: 2,
+  songs: [
+    { id: "a", title: "Uno", artist: "", album: "", duration: 10, fingerprint: "a|1|1", source: "local" },
+    { id: "b", title: "Dos", artist: "Alguien", album: "Disco", duration: 0, fingerprint: "b|2|2", source: "local" },
+    {
+      id: "r",
+      title: "Remota",
+      artist: "Alguien",
+      album: "",
+      duration: 90,
+      fingerprint: "audius:xyz",
+      source: "audius",
+      streamUrl: "https://api.audius.co/v1/tracks/xyz/stream?app_name=Musongs",
+      coverUrl: "https://img.example.test/xyz.jpg",
+      pageUrl: "https://audius.co/alguien/remota",
+    },
+  ],
+  library: ["a", "b", "r"],
+  playlists: [{ id: "p", name: "Mix", songIds: ["b", "a", "r", "b"] }],
+};
+
+const LEGACY_STATE = {
   version: 1,
   songs: [
     { id: "a", title: "Uno", artist: "", album: "", duration: 10, fingerprint: "a|1|1" },
@@ -49,7 +71,15 @@ const STATE: StoredState = {
   playlists: [{ id: "p", name: "Mix", songIds: ["b", "a", "b"] }],
 };
 
-const PREFERENCES: Preferences = { volume: 0.4, muted: true, repeatMode: "all", rightColumnOpen: false, rightColumnTab: "structure" };
+const PREFERENCES: Preferences = {
+  volume: 0.4,
+  muted: true,
+  repeatMode: "all",
+  rightColumnOpen: false,
+  rightColumnTab: "structure",
+  panelWidths: { sidebar: 280, right: 400 },
+  shuffle: true,
+};
 
 describe("PlaylistStorage", () => {
   it("round-trips the state", () => {
@@ -62,6 +92,21 @@ describe("PlaylistStorage", () => {
     const storage = new PlaylistStorage(new FakeStorage());
     storage.savePreferences(PREFERENCES);
     expect(storage.loadPreferences()).toEqual(PREFERENCES);
+  });
+
+  it("loads old preferences without panel widths or shuffle using defaults", () => {
+    const fake = new FakeStorage();
+    const { panelWidths: _widths, shuffle: _shuffle, ...old } = PREFERENCES;
+    fake.setItem("musongs.preferences.v1", JSON.stringify(old));
+    expect(new PlaylistStorage(fake).loadPreferences()).toEqual({ ...old, panelWidths: { sidebar: 240, right: 340 }, shuffle: false });
+  });
+
+  it("replaces malformed panel widths and shuffle with defaults", () => {
+    const fake = new FakeStorage();
+    fake.setItem("musongs.preferences.v1", JSON.stringify({ ...PREFERENCES, panelWidths: { sidebar: "wide", right: 1 }, shuffle: "yes" }));
+    const loaded = new PlaylistStorage(fake).loadPreferences();
+    expect(loaded?.panelWidths).toEqual({ sidebar: 240, right: 340 });
+    expect(loaded?.shuffle).toBe(false);
   });
 
   it("returns null when nothing is stored", () => {
@@ -79,9 +124,63 @@ describe("PlaylistStorage", () => {
     expect(storage.loadPreferences()).toBeNull();
   });
 
-  it("rejects a wrong version", () => {
+  it("rejects an unknown version", () => {
     const fake = new FakeStorage();
-    fake.setItem("musongs.state.v1", JSON.stringify({ ...STATE, version: 2 }));
+    fake.setItem("musongs.state.v1", JSON.stringify({ ...STATE, version: 3 }));
+    expect(new PlaylistStorage(fake).loadState()).toBeNull();
+    fake.setItem("musongs.state.v1", JSON.stringify({ ...STATE, version: 0 }));
+    expect(new PlaylistStorage(fake).loadState()).toBeNull();
+  });
+
+  it("migrates a version 1 state to version 2 marking every song as local", () => {
+    const fake = new FakeStorage();
+    fake.setItem("musongs.state.v1", JSON.stringify(LEGACY_STATE));
+    const loaded = new PlaylistStorage(fake).loadState();
+    expect(loaded?.version).toBe(2);
+    expect(loaded?.songs.map((song) => song.source)).toEqual(["local", "local"]);
+    expect(loaded?.library).toEqual(["a", "b"]);
+    expect(loaded?.playlists).toEqual(LEGACY_STATE.playlists);
+  });
+
+  it("saves a migrated state back as version 2", () => {
+    const fake = new FakeStorage();
+    fake.setItem("musongs.state.v1", JSON.stringify(LEGACY_STATE));
+    const storage = new PlaylistStorage(fake);
+    const loaded = storage.loadState();
+    if (loaded !== null) {
+      storage.saveState(loaded);
+    }
+    expect(JSON.parse(fake.getItem("musongs.state.v1") ?? "{}").version).toBe(2);
+  });
+
+  it("round-trips a mixed state with local and audius songs", () => {
+    const storage = new PlaylistStorage(new FakeStorage());
+    storage.saveState(STATE);
+    const loaded = storage.loadState();
+    expect(loaded).toEqual(STATE);
+    expect(loaded?.songs.map((song) => song.source)).toEqual(["local", "local", "audius"]);
+  });
+
+  it("rejects audius songs without valid https URLs", () => {
+    const fake = new FakeStorage();
+    const storage = new PlaylistStorage(fake);
+    const remote = STATE.songs[2];
+    for (const patch of [{ streamUrl: "http://insecure.test/s" }, { streamUrl: 5 }, { pageUrl: "javascript:alert(1)" }, { coverUrl: "nope" }, { pageUrl: undefined }]) {
+      fake.setItem("musongs.state.v1", JSON.stringify({ ...STATE, songs: [STATE.songs[0], STATE.songs[1], { ...remote, ...patch }] }));
+      expect(storage.loadState()).toBeNull();
+    }
+  });
+
+  it("accepts audius songs without cover", () => {
+    const fake = new FakeStorage();
+    const remote = { ...STATE.songs[2], coverUrl: null };
+    fake.setItem("musongs.state.v1", JSON.stringify({ ...STATE, songs: [STATE.songs[0], STATE.songs[1], remote] }));
+    expect(new PlaylistStorage(fake).loadState()?.songs[2]).toEqual(remote);
+  });
+
+  it("rejects songs with an unknown source", () => {
+    const fake = new FakeStorage();
+    fake.setItem("musongs.state.v1", JSON.stringify({ ...STATE, songs: [{ ...STATE.songs[0], source: "cloud" }, STATE.songs[1], STATE.songs[2]] }));
     expect(new PlaylistStorage(fake).loadState()).toBeNull();
   });
 

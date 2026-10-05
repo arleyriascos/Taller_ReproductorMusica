@@ -17,7 +17,7 @@ export class DialogView {
   readonly #error = document.createElement("p");
   #confirmHandler: ConfirmHandler = () => null;
 
-  constructor(host: HTMLElement, title: string, confirmLabel: string, tone: DialogTone = "default") {
+  constructor(host: HTMLElement, title: string, confirmLabel: string, tone: DialogTone = "default", hasCancel = true) {
     this.#dialog.className = "dialog";
     this.#form.className = "dialog-form";
     this.#form.noValidate = true;
@@ -25,7 +25,7 @@ export class DialogView {
     this.#error.className = "dialog-error";
     this.#error.setAttribute("role", "alert");
     const heading = Object.assign(document.createElement("h2"), { className: "dialog-title", textContent: title });
-    this.#form.append(heading, this.#body, this.#error, this.createActions(confirmLabel, tone));
+    this.#form.append(heading, this.#body, this.#error, this.createActions(confirmLabel, tone, hasCancel));
     this.#dialog.append(this.#form);
     this.#dialog.setAttribute("aria-label", title);
     host.append(this.#dialog);
@@ -85,7 +85,7 @@ export class DialogView {
     this.#error.textContent = "";
   }
 
-  private createActions(confirmLabel: string, tone: DialogTone): HTMLDivElement {
+  private createActions(confirmLabel: string, tone: DialogTone, hasCancel: boolean): HTMLDivElement {
     const actions = Object.assign(document.createElement("div"), { className: "dialog-actions" });
     const cancel = Object.assign(document.createElement("button"), {
       type: "button",
@@ -98,7 +98,7 @@ export class DialogView {
       textContent: confirmLabel,
     });
     cancel.addEventListener("click", () => this.close());
-    actions.append(cancel, confirm);
+    actions.append(...(hasCancel ? [cancel, confirm] : [confirm]));
     return actions;
   }
 

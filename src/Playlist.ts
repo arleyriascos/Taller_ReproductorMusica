@@ -3,7 +3,7 @@ import type { LinkedList } from "./LinkedList";
 import type { Node } from "./Node";
 import type { Song } from "./Song";
 import { TrackedLinkedList } from "./TrackedLinkedList";
-import type { ListOperation } from "./types";
+import type { ListOperation, TraversalDirection } from "./types";
 
 export class Playlist {
   readonly id: string;
@@ -11,6 +11,7 @@ export class Playlist {
   #name: string;
   #songs: TrackedLinkedList<Song> = Playlist.track(new DoublyLinkedList<Song>());
   #current: Node<Song> | null = null;
+  #origins: WeakMap<Node<Song>, Node<Song>> | null = null;
 
   constructor(name: string, isLibrary = false, id: string = crypto.randomUUID()) {
     this.id = id;
@@ -74,15 +75,23 @@ export class Playlist {
     return this.removeKeepingCurrent(node, () => this.#songs.removeNode(node));
   }
 
+  moveToPosition(node: Node<Song>, position: number): void {
+    const index = this.requireIndex(node);
+    this.assertPosition(position, this.length);
+    if (position - 1 !== index) {
+      this.#songs.moveNode(node, position - 1);
+    }
+  }
+
   moveUp(node: Node<Song>): void {
     if (node.prev !== null) {
-      this.#songs.moveNode(node, this.requireIndex(node) - 1);
+      this.moveToPosition(node, this.positionOf(node) - 1);
     }
   }
 
   moveDown(node: Node<Song>): void {
     if (node.next !== null) {
-      this.#songs.moveNode(node, this.requireIndex(node) + 1);
+      this.moveToPosition(node, this.positionOf(node) + 1);
     }
   }
 
@@ -121,6 +130,17 @@ export class Playlist {
     return this.moveTo(this.#songs.tail);
   }
 
+  findAvailable(direction: TraversalDirection, wrap: boolean): Node<Song> | null {
+    let node = this.#current;
+    for (let step = 0; node !== null && step < this.length; step++) {
+      node = this.neighborOf(node, direction, wrap);
+      if (node?.value.isAvailable()) {
+        return node;
+      }
+    }
+    return null;
+  }
+
   hasNext(): boolean {
     return (this.#current?.next ?? null) !== null;
   }
@@ -149,6 +169,30 @@ export class Playlist {
     return total;
   }
 
+  shuffle(random: () => number = Math.random): void {
+    for (let last = this.length - 1; last >= 1; last--) {
+      const pick = Math.min(Math.floor(random() * (last + 1)), last);
+      if (pick !== last) {
+        this.#songs.moveNode(this.#songs.traverseToIndex(pick), last);
+      }
+    }
+  }
+
+  shuffledCopy(random: () => number, anchor: Node<Song> | null): Playlist {
+    const copy = this.clone(this.#name);
+    const start = this.linkOrigins(copy, anchor);
+    copy.shuffle(random);
+    if (start !== null) {
+      copy.moveToPosition(start, 1);
+      copy.select(start);
+    }
+    return copy;
+  }
+
+  originOf(node: Node<Song>): Node<Song> | null {
+    return this.#origins?.get(node) ?? null;
+  }
+
   clone(name: string): Playlist {
     const copy = new Playlist(name);
     const songs = new DoublyLinkedList<Song>();
@@ -157,6 +201,21 @@ export class Playlist {
     }
     copy.#songs = Playlist.track(songs);
     return copy;
+  }
+
+  private linkOrigins(copy: Playlist, anchor: Node<Song> | null): Node<Song> | null {
+    const origins = new WeakMap<Node<Song>, Node<Song>>();
+    let start: Node<Song> | null = null;
+    let original = this.head;
+    let twin = copy.head;
+    while (original !== null && twin !== null) {
+      origins.set(twin, original);
+      start = original === anchor ? twin : start;
+      original = original.next;
+      twin = twin.next;
+    }
+    copy.#origins = origins;
+    return start;
   }
 
   private removeKeepingCurrent(node: Node<Song>, removal: () => Song): Song {
@@ -175,6 +234,13 @@ export class Playlist {
       throw new Error("Node does not belong to this playlist");
     }
     return index;
+  }
+
+  private neighborOf(node: Node<Song>, direction: TraversalDirection, wrap: boolean): Node<Song> | null {
+    if (direction === "next") {
+      return node.next ?? (wrap ? this.#songs.head : null);
+    }
+    return node.prev ?? (wrap ? this.#songs.tail : null);
   }
 
   private moveTo(target: Node<Song> | null): Node<Song> | null {

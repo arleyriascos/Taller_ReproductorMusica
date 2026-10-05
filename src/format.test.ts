@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { artistLabel, comparableText, countLabel, formatElapsed, formatMegabytes, formatTime, formatTotal } from "./format";
+import { artistLabel, clampPanelWidths, comparableText, countLabel, COVER_TONE_COUNT, coverInitial, coverToneIndex, formatElapsed, formatMegabytes, formatTime, formatTotal, MAIN_MIN_WIDTH } from "./format";
 
 describe("formatTime", () => {
   it("formats minutes and seconds with two-digit seconds", () => {
@@ -116,5 +116,74 @@ describe("formatMegabytes", () => {
     for (const value of [0, -10, Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(formatMegabytes(value)).toBe("0,0");
     }
+  });
+});
+
+describe("clampPanelWidths", () => {
+  it("keeps valid widths untouched when there is room", () => {
+    expect(clampPanelWidths({ sidebar: 260, right: 400 }, 1600)).toEqual({ sidebar: 260, right: 400 });
+  });
+
+  it("limits the sidebar to 200–360 and the right column to 280–520", () => {
+    expect(clampPanelWidths({ sidebar: 100, right: 100 }, 2000)).toEqual({ sidebar: 200, right: 280 });
+    expect(clampPanelWidths({ sidebar: 900, right: 900 }, 3000)).toEqual({ sidebar: 360, right: 520 });
+  });
+
+  it("never lets the main column drop below 480", () => {
+    for (const available of [1100, 1200, 1280, 1366, 1500]) {
+      const result = clampPanelWidths({ sidebar: 360, right: 520 }, available);
+      expect(available - result.sidebar - result.right).toBeGreaterThanOrEqual(MAIN_MIN_WIDTH);
+    }
+  });
+
+  it("reduces the other panel first and keeps the favored one", () => {
+    expect(clampPanelWidths({ sidebar: 360, right: 520 }, 1200, "sidebar")).toEqual({ sidebar: 360, right: 360 });
+    expect(clampPanelWidths({ sidebar: 360, right: 520 }, 1200, "right")).toEqual({ sidebar: 200, right: 520 });
+  });
+
+  it("reduces the favored panel only when the other is already at its minimum", () => {
+    expect(clampPanelWidths({ sidebar: 360, right: 520 }, 1000, "sidebar")).toEqual({ sidebar: 240, right: 280 });
+  });
+
+  it("rounds fractional widths and replaces invalid ones with the defaults", () => {
+    expect(clampPanelWidths({ sidebar: 250.6, right: 333.2 }, 1600)).toEqual({ sidebar: 251, right: 333 });
+    expect(clampPanelWidths({ sidebar: Number.NaN, right: Number.POSITIVE_INFINITY }, 1600)).toEqual({ sidebar: 240, right: 340 });
+  });
+
+  it("supports dragging one panel without moving the other", () => {
+    expect(clampPanelWidths({ sidebar: 500, right: 340 }, 1100, "right")).toEqual({ sidebar: 280, right: 340 });
+    expect(clampPanelWidths({ sidebar: 240, right: 700 }, 1100, "sidebar")).toEqual({ sidebar: 240, right: 380 });
+  });
+});
+
+describe("coverToneIndex", () => {
+  it("is deterministic and inside the palette", () => {
+    for (const id of ["a", "playlist-1", "3f2b9c9e-7d51-4a6e-8c3f-0d2a1b4e5f60", "", "ñandú"]) {
+      const index = coverToneIndex(id);
+      expect(index).toBe(coverToneIndex(id));
+      expect(Number.isInteger(index)).toBe(true);
+      expect(index).toBeGreaterThanOrEqual(0);
+      expect(index).toBeLessThan(COVER_TONE_COUNT);
+    }
+  });
+
+  it("spreads different ids over several tones", () => {
+    const tones = new Set(Array.from({ length: 60 }, (_, index) => coverToneIndex(`id-${index}`)));
+    expect(tones.size).toBe(COVER_TONE_COUNT);
+  });
+});
+
+describe("coverInitial", () => {
+  it("uppercases the first letter of the trimmed name", () => {
+    expect(coverInitial("  rock clásico")).toBe("R");
+    expect(coverInitial("ñandú")).toBe("Ñ");
+  });
+
+  it("keeps emoji and symbols whole", () => {
+    expect(coverInitial("🎵 Mix")).toBe("🎵");
+  });
+
+  it("falls back to a question mark for blank names", () => {
+    expect(coverInitial("   ")).toBe("?");
   });
 });
