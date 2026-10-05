@@ -3,7 +3,7 @@ import { createIconButton } from "./icons";
 import type { Node } from "./Node";
 import type { Playlist } from "./Playlist";
 import type { Song } from "./Song";
-import type { ListOperation } from "./types";
+import type { ListOperation, RightColumnTab } from "./types";
 
 type Operation = ListOperation<Song>;
 type PlayNodeHandler = (playlist: Playlist, node: Node<Song>) => void;
@@ -24,12 +24,14 @@ const WINDOW_RADIUS = 15;
 const HISTORY_SIZE = 6;
 const DESKTOP_QUERY = "(min-width: 1100px)";
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+const TAB_ORDER: readonly RightColumnTab[] = ["now", "structure"];
+const TAB_LABELS: Record<RightColumnTab, string> = { now: "Sonando", structure: "Estructura" };
 const NO_CHANGES: ReadonlySet<Node<Song>> = new Set();
 
 export class StructurePanelView {
   readonly #root: HTMLElement;
   readonly #backdrop: HTMLElement;
-  readonly #close = createIconButton("close", "Ocultar estructura", "icon-button structure-close");
+  readonly #close = createIconButton("close", "Ocultar panel lateral", "icon-button structure-close");
   readonly #subtitle = Object.assign(document.createElement("p"), { className: "structure-subtitle" });
   readonly #summary = Object.assign(document.createElement("p"), { className: "structure-summary" });
   readonly #operationCode = Object.assign(document.createElement("code"), { className: "structure-code" });
@@ -38,8 +40,11 @@ export class StructurePanelView {
   readonly #historyList = Object.assign(document.createElement("ol"), { className: "structure-history-list" });
   readonly #announcer = Object.assign(document.createElement("p"), { className: "visually-hidden" });
   readonly #cardNodes = new WeakMap<Element, Node<Song>>();
+  readonly #tabs = new Map<RightColumnTab, HTMLButtonElement>();
+  readonly #panels = new Map<RightColumnTab, HTMLElement>();
   readonly #desktop = window.matchMedia(DESKTOP_QUERY);
   #isOpen: boolean;
+  #tab: RightColumnTab = "now";
   #playlist: Playlist | null = null;
   #name = "";
   #current: Node<Song> | null = null;
@@ -48,12 +53,14 @@ export class StructurePanelView {
   #returnFocus: HTMLElement | null = null;
   #playHandler: PlayNodeHandler = () => {};
   #visibilityHandler: (isOpen: boolean) => void = () => {};
+  #tabHandler: (tab: RightColumnTab) => void = () => {};
 
   constructor(root: HTMLElement, backdrop: HTMLElement) {
     this.#root = root;
     this.#backdrop = backdrop;
     this.#isOpen = this.#desktop.matches;
     this.#root.append(...this.createContent());
+    this.selectTab("now");
     this.applyOpen();
     this.registerEvents();
   }
@@ -62,12 +69,45 @@ export class StructurePanelView {
     return this.#isOpen;
   }
 
+  get nowPlayingSlot(): HTMLElement {
+    return this.requirePanel("now");
+  }
+
+  get tab(): RightColumnTab {
+    return this.#tab;
+  }
+
   onPlayNode(handler: PlayNodeHandler): void {
     this.#playHandler = handler;
   }
 
   onVisibilityChange(handler: (isOpen: boolean) => void): void {
     this.#visibilityHandler = handler;
+  }
+
+  onTabChange(handler: (tab: RightColumnTab) => void): void {
+    this.#tabHandler = handler;
+  }
+
+  restoreOpen(isOpen: boolean): void {
+    if (this.#desktop.matches && isOpen !== this.#isOpen) {
+      this.setOpen(isOpen);
+    }
+  }
+
+  selectTab(tab: RightColumnTab): void {
+    const changed = tab !== this.#tab;
+    this.#tab = tab;
+    for (const name of TAB_ORDER) {
+      const isSelected = name === tab;
+      this.#tabs.get(name)?.setAttribute("aria-selected", String(isSelected));
+      this.#tabs.get(name)?.setAttribute("tabindex", isSelected ? "0" : "-1");
+      this.#panels.get(name)?.toggleAttribute("hidden", !isSelected);
+    }
+    if (changed) {
+      this.#tabHandler(tab);
+      this.scrollToFocus();
+    }
   }
 
   toggle(): void {
@@ -114,7 +154,7 @@ export class StructurePanelView {
     this.#operation = operation;
     this.renderHeader(playlist);
     this.renderOperation(playlist, isNewOperation);
-    this.renderChain(playlist, { current, changed: isNewOperation && this.#isOpen ? StructurePanelView.changedNodes(operation) : NO_CHANGES });
+    this.renderChain(playlist, { current, changed: isNewOperation && this.#isOpen && this.#tab === "structure" ? StructurePanelView.changedNodes(operation) : NO_CHANGES });
     this.scrollToFocus();
   }
 
@@ -140,8 +180,7 @@ export class StructurePanelView {
     this.#subtitle.textContent = `Lista doble de «${playlist.name}»`;
     this.#subtitle.title = playlist.name;
     this.#summary.hidden = playlist.length === 0;
-    const head = StructurePanelView.headOf(playlist);
-    this.#summary.textContent = `length = ${playlist.length} · head = ${StructurePanelView.titleOf(head)} · tail = ${StructurePanelView.titleOf(StructurePanelView.tailOf(head))}`;
+    this.#summary.textContent = `length = ${playlist.length} · head = ${StructurePanelView.titleOf(playlist.head)} · tail = ${StructurePanelView.titleOf(playlist.tail)}`;
   }
 
   private renderOperation(playlist: Playlist, isNewOperation: boolean): void {
@@ -172,7 +211,7 @@ export class StructurePanelView {
       this.#chain.replaceChildren(StructurePanelView.createEmptyState());
       return;
     }
-    const range = StructurePanelView.windowAround(playlist, marks.current ?? StructurePanelView.headOf(playlist));
+    const range = StructurePanelView.windowAround(playlist, marks.current ?? playlist.head);
     const list = Object.assign(document.createElement("ol"), { className: "structure-nodes" });
     list.setAttribute("aria-label", "Nodos de la lista");
     const shown = this.fillChain(list, range, marks);
@@ -262,14 +301,73 @@ export class StructurePanelView {
     handle.setAttribute("aria-hidden", "true");
     this.#announcer.setAttribute("aria-live", "polite");
     this.#chain.setAttribute("aria-label", "Cadena de nodos");
-    return [handle, this.createHeader(), this.#summary, this.createOperationBox(), this.#chain, this.createHistory(), this.#announcer];
+    return [handle, this.createTabs(), ...TAB_ORDER.map((name) => this.createPanel(name))];
+  }
+
+  private createTabs(): HTMLElement {
+    const bar = Object.assign(document.createElement("div"), { className: "right-tabbar" });
+    const tablist = Object.assign(document.createElement("div"), { className: "right-tabs" });
+    tablist.setAttribute("role", "tablist");
+    tablist.setAttribute("aria-label", "Panel lateral");
+    tablist.addEventListener("keydown", (event) => this.handleTabKey(event));
+    for (const name of TAB_ORDER) {
+      tablist.append(this.createTab(name));
+    }
+    bar.append(tablist, this.#close);
+    return bar;
+  }
+
+  private createTab(name: RightColumnTab): HTMLButtonElement {
+    const tab = Object.assign(document.createElement("button"), {
+      type: "button",
+      className: "right-tab",
+      id: `right-tab-${name}`,
+      textContent: TAB_LABELS[name],
+    });
+    tab.setAttribute("role", "tab");
+    tab.setAttribute("aria-controls", `right-panel-${name}`);
+    tab.addEventListener("click", () => this.selectTab(name));
+    this.#tabs.set(name, tab);
+    return tab;
+  }
+
+  private createPanel(name: RightColumnTab): HTMLElement {
+    const panel = Object.assign(document.createElement("div"), { className: `right-panel right-panel-${name}`, id: `right-panel-${name}` });
+    panel.setAttribute("role", "tabpanel");
+    panel.setAttribute("aria-labelledby", `right-tab-${name}`);
+    if (name === "structure") {
+      panel.append(this.createHeader(), this.#summary, this.createOperationBox(), this.#chain, this.createHistory(), this.#announcer);
+    }
+    this.#panels.set(name, panel);
+    return panel;
+  }
+
+  private handleTabKey(event: KeyboardEvent): void {
+    const index = TAB_ORDER.indexOf(this.#tab);
+    const moves: Record<string, number> = { ArrowRight: index + 1, ArrowLeft: index - 1, Home: 0, End: TAB_ORDER.length - 1 };
+    const target = moves[event.key];
+    if (target === undefined) {
+      return;
+    }
+    event.preventDefault();
+    const name = TAB_ORDER[(target + TAB_ORDER.length) % TAB_ORDER.length];
+    this.selectTab(name);
+    this.#tabs.get(name)?.focus();
+  }
+
+  private requirePanel(name: RightColumnTab): HTMLElement {
+    const panel = this.#panels.get(name);
+    if (panel === undefined) {
+      throw new Error(`Missing right column panel ${name}`);
+    }
+    return panel;
   }
 
   private createHeader(): HTMLElement {
     const header = Object.assign(document.createElement("header"), { className: "structure-header" });
     const text = Object.assign(document.createElement("div"), { className: "structure-header-text" });
     text.append(Object.assign(document.createElement("h2"), { className: "structure-title", textContent: "Estructura" }), this.#subtitle);
-    header.append(text, this.#close);
+    header.append(text);
     return header;
   }
 
@@ -301,28 +399,13 @@ export class StructurePanelView {
     return { start, startIndex: focusIndex - steps, focus, limit: steps + 1 + WINDOW_RADIUS };
   }
 
-  private static headOf(playlist: Playlist): Node<Song> | null {
-    for (const node of playlist.nodes()) {
-      return node;
-    }
-    return null;
-  }
-
-  private static tailOf(head: Node<Song> | null): Node<Song> | null {
-    let node = head;
-    while (node !== null && node.next !== null) {
-      node = node.next;
-    }
-    return node;
-  }
-
   private static changedNodes(operation: Operation | null): ReadonlySet<Node<Song>> {
     const nodes = [operation?.previousNode, operation?.node, operation?.nextNode];
     return new Set(nodes.filter((node): node is Node<Song> => node !== null && node !== undefined));
   }
 
   private static codeOf(operation: Operation): string {
-    const takesIndex = operation.type === "insert" || operation.type === "remove";
+    const takesIndex = operation.type === "insert" || operation.type === "remove" || operation.type === "move";
     return takesIndex ? `${operation.type}(${operation.index ?? ""})` : `${operation.type}()`;
   }
 
@@ -332,6 +415,9 @@ export class StructurePanelView {
     }
     if (operation.type === "remove" || operation.type === "removeNode") {
       return StructurePanelView.removalSentence(operation);
+    }
+    if (operation.type === "move") {
+      return StructurePanelView.moveSentence(operation);
     }
     return StructurePanelView.insertionSentence(operation);
   }
@@ -349,6 +435,21 @@ export class StructurePanelView {
       return `${verb} ${value} al final (tail)`;
     }
     return `${verb} ${value} entre «${operation.previousLabel}» y «${operation.nextLabel}»`;
+  }
+
+  private static moveSentence(operation: Operation): string {
+    const value = `«${operation.valueLabel ?? ""}»`;
+    const lead = `Se movió ${value} al índice ${operation.index ?? 0}: ahora`;
+    if (operation.previousLabel === null && operation.nextLabel === null) {
+      return `${lead} es el único nodo`;
+    }
+    if (operation.previousLabel === null) {
+      return `${lead} es el head, antes de «${operation.nextLabel}»`;
+    }
+    if (operation.nextLabel === null) {
+      return `${lead} es el tail, después de «${operation.previousLabel}»`;
+    }
+    return `${lead} está entre «${operation.previousLabel}» y «${operation.nextLabel}»`;
   }
 
   private static removalSentence(operation: Operation): string {

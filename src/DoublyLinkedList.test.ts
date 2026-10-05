@@ -352,6 +352,103 @@ describe("forward and backward", () => {
   });
 });
 
+describe("moveNode", () => {
+  function moveAndCheck(values: string[], from: number, to: number): { list: DoublyLinkedList<string>; moved: Node<string>; before: Node<string>[] } {
+    const list = listOf(...values);
+    const before = [...list.forward()];
+    const moved = before[from];
+    list.moveNode(moved, to);
+    const expected = values.filter((_, index) => index !== from);
+    expected.splice(to, 0, values[from]);
+    expectValidList(list, expected);
+    return { list, moved, before };
+  }
+
+  it("moves the head to the tail", () => {
+    const { list, moved } = moveAndCheck(["a", "b", "c", "d"], 0, 3);
+    expect(list.tail).toBe(moved);
+    expect(list.head?.value).toBe("b");
+  });
+
+  it("moves the tail to the head", () => {
+    const { list, moved } = moveAndCheck(["a", "b", "c", "d"], 3, 0);
+    expect(list.head).toBe(moved);
+    expect(list.tail?.value).toBe("c");
+  });
+
+  it("moves a middle node forward", () => {
+    moveAndCheck(["a", "b", "c", "d", "e"], 1, 3);
+  });
+
+  it("moves a middle node backward", () => {
+    moveAndCheck(["a", "b", "c", "d", "e"], 3, 1);
+  });
+
+  it("moves a node one step in each direction", () => {
+    moveAndCheck(["a", "b", "c"], 1, 2);
+    moveAndCheck(["a", "b", "c"], 1, 0);
+  });
+
+  it("leaves the list unchanged when moving to the same index", () => {
+    for (const index of [0, 1, 2]) {
+      const { list, before } = moveAndCheck(["a", "b", "c"], index, index);
+      expect([...list.forward()]).toEqual(before);
+    }
+  });
+
+  it("works on a single-node list", () => {
+    const { list, moved } = moveAndCheck(["a"], 0, 0);
+    expect(list.head).toBe(moved);
+    expect(list.tail).toBe(moved);
+  });
+
+  it("works on a two-node list", () => {
+    moveAndCheck(["a", "b"], 0, 1);
+    moveAndCheck(["a", "b"], 1, 0);
+  });
+
+  it("keeps the identity of the moved node and of every other node", () => {
+    const { list, moved, before } = moveAndCheck(["a", "b", "c", "d"], 1, 3);
+    expect(list.length).toBe(4);
+    expect(new Set(list.forward())).toEqual(new Set(before));
+    expect(list.traverseToIndex(3)).toBe(moved);
+  });
+
+  it("moves every node to every index with valid links", () => {
+    const values = ["a", "b", "c", "d", "e"];
+    for (let from = 0; from < values.length; from++) {
+      for (let to = 0; to < values.length; to++) {
+        moveAndCheck(values, from, to);
+      }
+    }
+  });
+
+  it("rejects invalid indexes without changing the list", () => {
+    const list = listOf("a", "b", "c");
+    const before = [...list.forward()];
+    const node = before[1];
+    for (const index of [-1, 3, 4, 1.5, Number.NaN]) {
+      expect(() => list.moveNode(node, index)).toThrow(RangeError);
+      expectValidList(list, ["a", "b", "c"]);
+      expect([...list.forward()]).toEqual(before);
+    }
+  });
+
+  it("rejects any index on a single-node list except zero", () => {
+    const list = listOf("a");
+    expect(() => list.moveNode(list.traverseToIndex(0), 1)).toThrow(RangeError);
+    expectValidList(list, ["a"]);
+  });
+
+  it("keeps working after moves", () => {
+    const list = listOf("a", "b", "c");
+    list.moveNode(list.traverseToIndex(0), 2);
+    list.append("d");
+    list.prepend("z");
+    expectValidList(list, ["z", "b", "c", "a", "d"]);
+  });
+});
+
 describe("clear", () => {
   it("empties the list and detaches every node", () => {
     const list = listOf(1, 2, 3);

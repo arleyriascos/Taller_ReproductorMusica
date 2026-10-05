@@ -1,7 +1,9 @@
 import { comparableText } from "./format";
 import { Playlist } from "./Playlist";
 import { Song } from "./Song";
-import type { AddTracksResult, LoadedTrack, PlaylistNameIssue } from "./types";
+import type { AddTracksResult, LoadedTrack, PlaylistNameIssue, StoredPlaylist, StoredSong, StoredState } from "./types";
+
+type PlacedHandler = (song: Song, track: LoadedTrack) => void;
 
 const LIBRARY_NAME = "Biblioteca";
 const MAX_NAME_LENGTH = 40;
@@ -70,12 +72,56 @@ export class PlaylistManager {
     return null;
   }
 
-  addTracks(tracks: LoadedTrack[]): AddTracksResult {
+  addTracks(tracks: LoadedTrack[], onPlaced: PlacedHandler = () => {}): AddTracksResult {
     const result: AddTracksResult = { added: 0, reconnected: 0, duplicated: 0 };
     for (const track of tracks) {
-      result[this.addTrack(track)]++;
+      const placed = this.addTrack(track);
+      result[placed.outcome]++;
+      if (placed.outcome !== "duplicated") {
+        onPlaced(placed.song, track);
+      }
     }
     return result;
+  }
+
+  hasUnavailableSongs(): boolean {
+    for (const node of this.library.nodes()) {
+      if (!node.value.isAvailable()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  toStoredState(): StoredState {
+    const songs = new Map<string, StoredSong>();
+    const library: string[] = [];
+    for (const node of this.library.nodes()) {
+      songs.set(node.value.id, PlaylistManager.storedSong(node.value));
+      library.push(node.value.id);
+    }
+    const playlists = [...this.#playlists.values()].map((playlist) => PlaylistManager.storedPlaylist(playlist));
+    return { version: 1, songs: [...songs.values()], library, playlists };
+  }
+
+  restore(state: StoredState): void {
+    if (this.library.length > 0 || this.#playlists.size > 0) {
+      throw new Error("Only an empty manager can be restored");
+    }
+    const songs = new Map<string, Song>();
+    for (const stored of state.songs) {
+      songs.set(stored.id, new Song(stored, stored.id));
+    }
+    for (const id of state.library) {
+      this.library.addAtEnd(PlaylistManager.requireSong(songs, id));
+    }
+    for (const stored of state.playlists) {
+      const playlist = new Playlist(stored.name, false, stored.id);
+      for (const id of stored.songIds) {
+        playlist.addAtEnd(PlaylistManager.requireSong(songs, id));
+      }
+      this.#playlists.set(playlist.id, playlist);
+    }
   }
 
   removeSongEverywhere(song: Song): void {
@@ -93,19 +139,19 @@ export class PlaylistManager {
     return copy;
   }
 
-  private addTrack(track: LoadedTrack): keyof AddTracksResult {
+  private addTrack(track: LoadedTrack): { song: Song; outcome: keyof AddTracksResult } {
     const existing = this.findByFingerprint(track.details.fingerprint);
     if (existing === null) {
       const song = new Song(track.details);
       song.attachFile(track);
       this.library.addAtEnd(song);
-      return "added";
+      return { song, outcome: "added" };
     }
     if (existing.isAvailable()) {
-      return "duplicated";
+      return { song: existing, outcome: "duplicated" };
     }
     existing.attachFile(track);
-    return "reconnected";
+    return { song: existing, outcome: "reconnected" };
   }
 
   private validName(name: string, exceptId?: string): string {
@@ -151,6 +197,27 @@ export class PlaylistManager {
       throw new Error(`No user playlist with id ${id}`);
     }
     return playlist;
+  }
+
+  private static storedSong(song: Song): StoredSong {
+    const { id, title, artist, album, duration, fingerprint } = song;
+    return { id, title, artist, album, duration, fingerprint };
+  }
+
+  private static storedPlaylist(playlist: Playlist): StoredPlaylist {
+    const songIds: string[] = [];
+    for (const node of playlist.nodes()) {
+      songIds.push(node.value.id);
+    }
+    return { id: playlist.id, name: playlist.name, songIds };
+  }
+
+  private static requireSong(songs: ReadonlyMap<string, Song>, id: string): Song {
+    const song = songs.get(id);
+    if (song === undefined) {
+      throw new Error(`Unknown song id ${id}`);
+    }
+    return song;
   }
 
   private static copyName(name: string, attempt: number): string {

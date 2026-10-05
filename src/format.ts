@@ -1,4 +1,6 @@
 const EMPTY_TIME = "—:—";
+const BYTES_PER_MEGABYTE = 1024 * 1024;
+const UNKNOWN_ARTIST = "Artista desconocido";
 
 function isValidSeconds(seconds: number): boolean {
   return Number.isFinite(seconds) && seconds > 0;
@@ -33,6 +35,15 @@ export function formatTotal(seconds: number): string {
 
 export function countLabel(count: number, singular: string, plural: string): string {
   return `${count} ${count === 1 ? singular : plural}`;
+}
+
+export function formatMegabytes(bytes: number): string {
+  const megabytes = Number.isFinite(bytes) && bytes > 0 ? bytes / BYTES_PER_MEGABYTE : 0;
+  return megabytes.toFixed(1).replace(".", ",");
+}
+
+export function artistLabel(artist: string): string {
+  return artist === "" ? UNKNOWN_ARTIST : artist;
 }
 
 export function comparableText(text: string): string {

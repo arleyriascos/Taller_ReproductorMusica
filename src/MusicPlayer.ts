@@ -68,6 +68,10 @@ export class MusicPlayer {
   }
 
   playFrom(playlist: Playlist, node: Node<Song>): void {
+    if (!node.value.isAvailable()) {
+      this.#errorListener?.("unavailable", node.value);
+      return;
+    }
     playlist.select(node);
     this.#context = playlist;
     this.playSong(node.value);
@@ -114,7 +118,11 @@ export class MusicPlayer {
   }
 
   toggleMute(): void {
-    this.#muted = !this.#muted;
+    this.setMuted(!this.#muted);
+  }
+
+  setMuted(isMuted: boolean): void {
+    this.#muted = isMuted;
     this.applyVolume();
   }
 

@@ -1,7 +1,7 @@
 import type { Node } from "./Node";
 import type { Song } from "./Song";
 
-export type ListOperationType = "append" | "prepend" | "insert" | "remove" | "removeNode" | "clear";
+export type ListOperationType = "append" | "prepend" | "insert" | "remove" | "removeNode" | "move" | "clear";
 
 export interface OperationLinks<T> {
   previousNode: Node<T> | null;
@@ -77,6 +77,10 @@ export type PlayerErrorCode = "unavailable" | "playback-failed";
 
 export type RepeatMode = "off" | "all" | "one";
 
+export type MoveDirection = "up" | "down";
+
+export type RightColumnTab = "now" | "structure";
+
 export interface PlayerState {
   song: Song | null;
   isPlaying: boolean;
@@ -87,4 +91,36 @@ export interface PlayerState {
   hasNext: boolean;
   hasPrevious: boolean;
   repeatMode: RepeatMode;
+}
+
+export type StoredMedia = SongMedia;
+
+export interface StoredSong extends SongDetails {
+  id: string;
+}
+
+export interface StoredPlaylist {
+  id: string;
+  name: string;
+  songIds: string[];
+}
+
+export interface StoredState {
+  version: 1;
+  songs: StoredSong[];
+  library: string[];
+  playlists: StoredPlaylist[];
+}
+
+export interface Preferences {
+  volume: number;
+  muted: boolean;
+  repeatMode: RepeatMode;
+  rightColumnOpen: boolean;
+  rightColumnTab: RightColumnTab;
+}
+
+export interface StorageUsage {
+  songs: number;
+  bytes: number;
 }

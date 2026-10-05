@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { comparableText, countLabel, formatElapsed, formatTime, formatTotal } from "./format";
+import { artistLabel, comparableText, countLabel, formatElapsed, formatMegabytes, formatTime, formatTotal } from "./format";
 
 describe("formatTime", () => {
   it("formats minutes and seconds with two-digit seconds", () => {
@@ -92,5 +92,29 @@ describe("comparableText", () => {
 
   it("returns an empty string for blank text", () => {
     expect(comparableText("   ")).toBe("");
+  });
+});
+
+describe("artistLabel", () => {
+  it("returns the artist when there is one", () => {
+    expect(artistLabel("Soda Stereo")).toBe("Soda Stereo");
+  });
+
+  it("falls back to the unknown artist text for an empty string", () => {
+    expect(artistLabel("")).toBe("Artista desconocido");
+  });
+});
+
+describe("formatMegabytes", () => {
+  it("shows one decimal with a comma", () => {
+    expect(formatMegabytes(1024 * 1024)).toBe("1,0");
+    expect(formatMegabytes(5.25 * 1024 * 1024)).toBe("5,3");
+    expect(formatMegabytes(300 * 1024)).toBe("0,3");
+  });
+
+  it("shows zero for empty and invalid values", () => {
+    for (const value of [0, -10, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(formatMegabytes(value)).toBe("0,0");
+    }
   });
 });

@@ -1,7 +1,8 @@
 import { DialogView } from "./DialogView";
+import { countLabel, formatMegabytes } from "./format";
 import { createIcon, createIconButton, createLabeledButton, type IconName } from "./icons";
 import type { Playlist } from "./Playlist";
-import type { PlaylistNameIssue } from "./types";
+import type { PlaylistNameIssue, StorageUsage } from "./types";
 
 export type LoadKind = "files" | "folder";
 
@@ -26,16 +27,20 @@ export class SidebarView {
   readonly #loadButtons: HTMLButtonElement[] = [];
   readonly #createDialog = new DialogView(document.body, "Nueva playlist", "Crear");
   readonly #nameInput = this.#createDialog.addNameField();
+  readonly #clearDialog = new DialogView(document.body, "¿Borrar datos guardados?", "Borrar", "danger");
+  readonly #storageNote = Object.assign(document.createElement("p"), { className: "storage-note", hidden: true });
   #selectHandler: SelectHandler = () => {};
   #createHandler: CreateHandler = () => null;
   #filesHandler: FilesHandler = () => {};
+  #clearHandler: () => void = () => {};
 
   constructor(root: HTMLElement, topBar: HTMLElement, backdrop: HTMLElement) {
     this.#root = root;
     this.#backdrop = backdrop;
     this.#fileInputs = { files: SidebarView.createFileInput("files"), folder: SidebarView.createFileInput("folder") };
     this.buildTopBar(topBar);
-    this.#root.append(this.createHeader(), this.createNavigation(), this.createLoadSection());
+    this.#root.append(this.createHeader(), this.createNavigation(), this.createLoadSection(), this.createStorageSection());
+    this.buildClearDialog();
     this.#createDialog.onConfirm(() => DialogView.nameIssueMessage(this.#createHandler(this.#nameInput.value)));
     this.registerEvents();
   }
@@ -50,6 +55,17 @@ export class SidebarView {
 
   onFilesChosen(handler: FilesHandler): void {
     this.#filesHandler = handler;
+  }
+
+  onClearData(handler: () => void): void {
+    this.#clearHandler = handler;
+  }
+
+  setStorageUsage(usage: StorageUsage | null): void {
+    this.#storageNote.hidden = usage === null;
+    if (usage !== null) {
+      this.#storageNote.textContent = `${countLabel(usage.songs, "canción", "canciones")} en este navegador · ${formatMegabytes(usage.bytes)} MB`;
+    }
   }
 
   render(data: SidebarData): void {
@@ -120,6 +136,26 @@ export class SidebarView {
     this.#loadButtons.push(files, folder);
     section.append(files, folder, this.#fileInputs.files, this.#fileInputs.folder);
     return section;
+  }
+
+  private createStorageSection(): HTMLDivElement {
+    const section = Object.assign(document.createElement("div"), { className: "sidebar-storage" });
+    const clear = createLabeledButton("trash", "Borrar datos guardados", "button button-ghost button-ghost-danger sidebar-button storage-clear");
+    clear.addEventListener("click", () => this.#clearDialog.open());
+    section.append(this.#storageNote, clear);
+    return section;
+  }
+
+  private buildClearDialog(): void {
+    const message = Object.assign(document.createElement("p"), {
+      className: "dialog-text",
+      textContent: "Se borrarán las canciones guardadas en este navegador, tus playlists y tus preferencias. Los archivos originales de tu equipo no se tocan.",
+    });
+    this.#clearDialog.body.append(message);
+    this.#clearDialog.onConfirm(() => {
+      this.#clearHandler();
+      return null;
+    });
   }
 
   private registerEvents(): void {

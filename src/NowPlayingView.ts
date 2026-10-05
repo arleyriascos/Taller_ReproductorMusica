@@ -1,15 +1,15 @@
-import { formatTime } from "./format";
+import { artistLabel } from "./format";
 import { createIconButton, createLabeledButton, setCover } from "./icons";
 import { activeLineIndex } from "./lyrics";
 import type { Node } from "./Node";
 import type { Playlist } from "./Playlist";
 import type { Song } from "./Song";
+import { createQueueItem, queueNote } from "./queueItem";
 import type { Lyrics, LyricsResult, LyricsSource, PlayerState, RepeatMode } from "./types";
 
-type TabName = "queue" | "lyrics";
+export type TabName = "queue" | "lyrics";
 type Step = (node: Node<Song>) => Node<Song> | null;
 
-const UNKNOWN_ARTIST = "Artista desconocido";
 const QUEUE_LIMIT = 25;
 const HISTORY_LIMIT = 10;
 const AUTO_SCROLL_PAUSE_MS = 4000;
@@ -96,12 +96,15 @@ export class NowPlayingView {
     this.#visibilityHandler = handler;
   }
 
-  open(): void {
+  open(tab?: TabName): void {
     if (this.isOpen || this.#song === null) {
       return;
     }
     this.#returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     this.setOpen(true);
+    if (tab !== undefined) {
+      this.selectTab(tab);
+    }
     this.renderQueueIfStale();
     this.requestLyricsIfNeeded();
     this.highlightLine();
@@ -176,7 +179,7 @@ export class NowPlayingView {
     }
     this.#song = song;
     this.#title.textContent = song?.title ?? "";
-    this.#artist.textContent = song === null ? "" : song.artist || UNKNOWN_ARTIST;
+    this.#artist.textContent = song === null ? "" : artistLabel(song.artist);
     this.#album.textContent = song?.album ?? "";
     this.#album.hidden = this.#album.textContent === "";
     const url = song?.coverUrl ?? null;
@@ -223,7 +226,7 @@ export class NowPlayingView {
     const previous = this.fillQueue(this.#historyList, current?.prev ?? null, (node) => node.prev, HISTORY_LIMIT);
     this.#history.hidden = previous === 0;
     this.#historySummary.textContent = `Anteriores (${previous})`;
-    this.#queueNote.textContent = this.queueNote(upcoming);
+    this.#queueNote.textContent = queueNote(this.#repeatMode, upcoming);
     this.#queueNote.hidden = this.#queueNote.textContent === "";
     if (hadFocus && NowPlayingView.isFocusLost()) {
       panel?.focus();
@@ -235,7 +238,7 @@ export class NowPlayingView {
     let count = 0;
     for (let node = start; node !== null; node = step(node)) {
       if (count < limit) {
-        list.append(this.createQueueItem(node));
+        list.append(createQueueItem(node, this.#itemNodes));
       }
       count++;
     }
@@ -243,34 +246,6 @@ export class NowPlayingView {
       list.append(Object.assign(document.createElement("li"), { className: "queue-more", textContent: `y ${count - limit} más` }));
     }
     return count;
-  }
-
-  private queueNote(upcoming: number): string {
-    if (this.#repeatMode === "all") {
-      return "Luego vuelve al inicio";
-    }
-    return upcoming === 0 ? "Es la última canción" : "";
-  }
-
-  private createQueueItem(node: Node<Song>): HTMLLIElement {
-    const song = node.value;
-    const item = document.createElement("li");
-    const button = Object.assign(document.createElement("button"), { type: "button", className: "queue-item" });
-    button.classList.toggle("is-unavailable", !song.isAvailable());
-    button.setAttribute("aria-label", `Reproducir ${song.title}`);
-    const cover = Object.assign(document.createElement("span"), { className: "cover queue-cover" });
-    setCover(cover, song.coverUrl);
-    const text = Object.assign(document.createElement("span"), { className: "queue-text" });
-    const detail = song.isAvailable() ? song.artist || UNKNOWN_ARTIST : "Archivo no disponible";
-    text.append(
-      Object.assign(document.createElement("span"), { className: "queue-title", textContent: song.title }),
-      Object.assign(document.createElement("span"), { className: "queue-artist", textContent: detail }),
-    );
-    const duration = Object.assign(document.createElement("span"), { className: "queue-duration", textContent: formatTime(song.duration) });
-    button.append(cover, text, duration);
-    this.#itemNodes.set(button, node);
-    item.append(button);
-    return item;
   }
 
   private requestLyricsIfNeeded(): void {

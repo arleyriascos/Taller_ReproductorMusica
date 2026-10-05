@@ -36,17 +36,17 @@ export class TrackedLinkedList<T> implements LinkedList<T> {
 
   append(value: T): Node<T> {
     const node = this.#inner.append(value);
-    return this.recordInsertion("append", this.#inner.length - 1, node);
+    return this.recordPlacement("append", this.#inner.length - 1, node);
   }
 
   prepend(value: T): Node<T> {
     const node = this.#inner.prepend(value);
-    return this.recordInsertion("prepend", 0, node);
+    return this.recordPlacement("prepend", 0, node);
   }
 
   insert(index: number, value: T): Node<T> {
     const node = this.#inner.insert(index, value);
-    return this.recordInsertion("insert", index, node);
+    return this.recordPlacement("insert", index, node);
   }
 
   remove(index: number): T {
@@ -56,6 +56,11 @@ export class TrackedLinkedList<T> implements LinkedList<T> {
 
   removeNode(node: Node<T>): T {
     return this.removeAndRecord("removeNode", null, node, () => this.#inner.removeNode(node));
+  }
+
+  moveNode(node: Node<T>, toIndex: number): void {
+    this.#inner.moveNode(node, toIndex);
+    this.recordPlacement("move", toIndex, node);
   }
 
   traverseToIndex(index: number): Node<T> {
@@ -87,7 +92,7 @@ export class TrackedLinkedList<T> implements LinkedList<T> {
     this.record("clear", null, null, { previousNode: null, node: null, nextNode: null });
   }
 
-  private recordInsertion(type: ListOperationType, index: number, node: Node<T>): Node<T> {
+  private recordPlacement(type: ListOperationType, index: number, node: Node<T>): Node<T> {
     this.record(type, index, this.#describe(node.value), { previousNode: node.prev, node, nextNode: node.next });
     return node;
   }

@@ -30,6 +30,14 @@ export class Playlist {
     return this.#songs.length;
   }
 
+  get head(): Node<Song> | null {
+    return this.#songs.head;
+  }
+
+  get tail(): Node<Song> | null {
+    return this.#songs.tail;
+  }
+
   get history(): readonly ListOperation<Song>[] {
     return this.#songs.history;
   }
@@ -66,6 +74,18 @@ export class Playlist {
     return this.removeKeepingCurrent(node, () => this.#songs.removeNode(node));
   }
 
+  moveUp(node: Node<Song>): void {
+    if (node.prev !== null) {
+      this.#songs.moveNode(node, this.requireIndex(node) - 1);
+    }
+  }
+
+  moveDown(node: Node<Song>): void {
+    if (node.next !== null) {
+      this.#songs.moveNode(node, this.requireIndex(node) + 1);
+    }
+  }
+
   removeAllOf(song: Song): number {
     let removed = 0;
     let node = this.#songs.head;
@@ -81,9 +101,7 @@ export class Playlist {
   }
 
   select(node: Node<Song>): void {
-    if (this.#songs.indexOf(node) === -1) {
-      throw new Error("Node does not belong to this playlist");
-    }
+    this.requireIndex(node);
     this.#current = node;
   }
 
@@ -149,6 +167,14 @@ export class Playlist {
       this.#current = replacement;
     }
     return song;
+  }
+
+  private requireIndex(node: Node<Song>): number {
+    const index = this.#songs.indexOf(node);
+    if (index === -1) {
+      throw new Error("Node does not belong to this playlist");
+    }
+    return index;
   }
 
   private moveTo(target: Node<Song> | null): Node<Song> | null {

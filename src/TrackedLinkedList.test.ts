@@ -300,6 +300,37 @@ describe("TrackedLinkedList failures", () => {
   });
 });
 
+describe("TrackedLinkedList move", () => {
+  it("records move with the destination index, the moved node and its new neighbors", () => {
+    const { inner, list } = trackedOf("a", "b", "c", "d");
+    const moved = nodeAt(list, 0);
+    list.moveNode(moved, 2);
+    expect(list.lastOperation).toMatchObject({ type: "move", index: 2, valueLabel: "A", previousLabel: "C", nextLabel: "D" });
+    expect(list.lastOperation?.previousNode).toBe(nodeAt(list, 1));
+    expect(list.lastOperation?.node).toBe(moved);
+    expect(list.lastOperation?.nextNode).toBe(nodeAt(list, 3));
+    expectValidList(inner, ["b", "c", "a", "d"]);
+    expectValidList(list, ["b", "c", "a", "d"]);
+  });
+
+  it("records the head and tail cases with a null neighbor", () => {
+    const { list } = trackedOf("a", "b", "c");
+    list.moveNode(nodeAt(list, 2), 0);
+    expect(list.lastOperation).toMatchObject({ type: "move", index: 0, previousLabel: null, nextLabel: "A" });
+    list.moveNode(nodeAt(list, 0), 2);
+    expect(list.lastOperation).toMatchObject({ type: "move", index: 2, previousLabel: "B", nextLabel: null });
+    expect(list.lastOperation?.nextNode).toBeNull();
+    expectValidList(list, ["a", "b", "c"]);
+  });
+
+  it("records nothing and keeps the list when the index is invalid", () => {
+    const { list } = trackedOf("a", "b");
+    expect(() => list.moveNode(nodeAt(list, 0), 2)).toThrow(RangeError);
+    expect(list.history).toEqual([]);
+    expectValidList(list, ["a", "b"]);
+  });
+});
+
 describe("TrackedLinkedList history limit", () => {
   it("keeps only the last 20 operations", () => {
     const { list } = trackedOf();

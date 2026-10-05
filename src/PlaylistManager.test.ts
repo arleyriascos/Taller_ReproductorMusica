@@ -294,7 +294,140 @@ describe("PlaylistManager duplicatePlaylist", () => {
     expect(manager.getPlaylist(copy.id)).toBe(copy);
   });
 
+  it("duplicates the library into an independent user playlist", () => {
+    const manager = new PlaylistManager();
+    manager.addTracks([trackFor("a.mp3"), trackFor("b.mp3")]);
+    const copy = manager.duplicatePlaylist(manager.library.id);
+    expect(copy.name).toBe("Biblioteca (copia)");
+    expect(copy.isLibrary).toBe(false);
+    expect([...copy.nodes()].map((node) => node.value)).toEqual(librarySongs(manager));
+    copy.removeAtPosition(1);
+    expect(manager.library.length).toBe(2);
+    expect([...manager.userPlaylists()]).toEqual([copy]);
+  });
+
   it("throws for an unknown id", () => {
     expect(() => new PlaylistManager().duplicatePlaylist("missing")).toThrow(Error);
+  });
+});
+
+describe("PlaylistManager persistence", () => {
+  function titles(playlist: { nodes(): Generator<{ value: Song }, void, undefined> }): string[] {
+    return [...playlist.nodes()].map((node) => node.value.title);
+  }
+
+  function populated(): PlaylistManager {
+    const manager = new PlaylistManager();
+    manager.addTracks([trackFor("a.mp3"), trackFor("b.mp3"), trackFor("c.mp3")]);
+    const [a, b, c] = librarySongs(manager);
+    const rock = manager.createPlaylist("Rock");
+    for (const song of [c, a, c, b]) {
+      rock.addAtEnd(song);
+    }
+    manager.createPlaylist("Vacía");
+    return manager;
+  }
+
+  it("serializes the library, the playlists and the songs in forward order", () => {
+    const state = populated().toStoredState();
+    const [a, b, c] = state.songs;
+    expect(state.version).toBe(1);
+    expect(state.songs.map((song) => song.title)).toEqual(["a.mp3", "b.mp3", "c.mp3"]);
+    expect(state.library).toEqual([a.id, b.id, c.id]);
+    expect(state.playlists.map((playlist) => playlist.name)).toEqual(["Rock", "Vacía"]);
+    expect(state.playlists[0].songIds).toEqual([c.id, a.id, c.id, b.id]);
+    expect(state.playlists[1].songIds).toEqual([]);
+  });
+
+  it("stores only plain data that survives JSON", () => {
+    const state = populated().toStoredState();
+    expect(JSON.parse(JSON.stringify(state))).toEqual(state);
+    expect(Object.keys(state.songs[0]).sort()).toEqual(["album", "artist", "duration", "fingerprint", "id", "title"]);
+  });
+
+  it("round trips keeping order, duplicates inside a playlist and ids", () => {
+    const original = populated();
+    const restored = new PlaylistManager();
+    restored.restore(JSON.parse(JSON.stringify(original.toStoredState())));
+    expect(restored.toStoredState()).toEqual(original.toStoredState());
+    const [originalRock, restoredRock] = [[...original.userPlaylists()][0], [...restored.userPlaylists()][0]];
+    expect(titles(restoredRock)).toEqual(["c.mp3", "a.mp3", "c.mp3", "b.mp3"]);
+    expect(restoredRock.id).toBe(originalRock.id);
+    expect(restoredRock.isLibrary).toBe(false);
+    expect([...restored.userPlaylists()].map((playlist) => playlist.name)).toEqual(["Rock", "Vacía"]);
+  });
+
+  it("rebuilds every list with valid links and shares song objects between lists", () => {
+    const restored = new PlaylistManager();
+    restored.restore(populated().toStoredState());
+    const rock = [...restored.userPlaylists()][0];
+    const [first, second, third, fourth] = [...rock.nodes()];
+    expect(first.prev).toBeNull();
+    expect(fourth.next).toBeNull();
+    expect(second.prev).toBe(first);
+    expect(third.next).toBe(fourth);
+    expect(first.value).toBe(third.value);
+    expect(librarySongs(restored)).toContain(second.value);
+    expect(restored.library.head?.prev).toBeNull();
+    expect(restored.library.tail?.next).toBeNull();
+  });
+
+  it("restores songs as unavailable with their saved details", () => {
+    const restored = new PlaylistManager();
+    restored.restore(populated().toStoredState());
+    expect(restored.hasUnavailableSongs()).toBe(true);
+    for (const song of librarySongs(restored)) {
+      expect(song.isAvailable()).toBe(false);
+      expect(song.sourceUrl).toBeNull();
+      expect(song.duration).toBe(60);
+      expect(song.artist).toBe("Artista");
+    }
+  });
+
+  it("reports no unavailable songs for an empty or fully available library", () => {
+    expect(new PlaylistManager().hasUnavailableSongs()).toBe(false);
+    expect(populated().hasUnavailableSongs()).toBe(false);
+  });
+
+  it("reconnects restored songs through addTracks keeping their ids", () => {
+    const restored = new PlaylistManager();
+    restored.restore(populated().toStoredState());
+    const idsBefore = librarySongs(restored).map((song) => song.id);
+    const placed: string[] = [];
+    const result = restored.addTracks([trackFor("b.mp3"), trackFor("z.mp3")], (song) => placed.push(song.title));
+    expect(result).toEqual({ added: 1, reconnected: 1, duplicated: 0 });
+    expect(placed).toEqual(["b.mp3", "z.mp3"]);
+    expect(librarySongs(restored).slice(0, 3).map((song) => song.id)).toEqual(idsBefore);
+    expect(librarySongs(restored)[1].isAvailable()).toBe(true);
+    expect(librarySongs(restored)[0].isAvailable()).toBe(false);
+    expect(restored.hasUnavailableSongs()).toBe(true);
+    restored.addTracks([trackFor("a.mp3"), trackFor("c.mp3")]);
+    expect(restored.hasUnavailableSongs()).toBe(false);
+  });
+
+  it("does not call the placed handler for duplicates", () => {
+    const manager = populated();
+    const placed: string[] = [];
+    const result = manager.addTracks([trackFor("a.mp3")], (song) => placed.push(song.title));
+    expect(result.duplicated).toBe(1);
+    expect(placed).toEqual([]);
+  });
+
+  it("restores an empty state", () => {
+    const restored = new PlaylistManager();
+    restored.restore(new PlaylistManager().toStoredState());
+    expect(restored.library.length).toBe(0);
+    expect([...restored.userPlaylists()]).toEqual([]);
+  });
+
+  it("refuses to restore into a manager that already has data", () => {
+    const state = populated().toStoredState();
+    expect(() => populated().restore(state)).toThrow(Error);
+  });
+
+  it("throws when a list references an unknown song", () => {
+    const state = populated().toStoredState();
+    state.library.push("missing");
+    expect(() => new PlaylistManager().restore(state)).toThrow(Error);
   });
 });

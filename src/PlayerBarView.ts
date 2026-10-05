@@ -1,4 +1,4 @@
-import { formatElapsed, formatTime } from "./format";
+import { artistLabel, formatElapsed, formatTime } from "./format";
 import { createIconButton, setButtonIcon, setCover, type IconName } from "./icons";
 import type { Song } from "./Song";
 import type { PlayerState, RepeatMode } from "./types";
@@ -7,7 +7,6 @@ type ActionHandler = () => void;
 type ValueHandler = (value: number) => void;
 
 const EMPTY_TITLE = "Elige una canción";
-const UNKNOWN_ARTIST = "Artista desconocido";
 
 const REPEAT_BUTTONS: Record<RepeatMode, { icon: IconName; label: string }> = {
   off: { icon: "repeat", label: "Repetir: desactivado" },
@@ -30,7 +29,7 @@ export class PlayerBarView {
   readonly #seek = PlayerBarView.createRange("Progreso de la canción", "player-seek");
   readonly #mute = createIconButton("volume", "Silenciar", "icon-button player-mute");
   readonly #volume = PlayerBarView.createRange("Volumen", "player-volume-range");
-  readonly #structure = createIconButton("structure", "Mostrar estructura", "icon-button player-structure");
+  readonly #structure = createIconButton("structure", "Mostrar panel lateral", "icon-button player-structure");
   #isSeeking = false;
   #coverUrl: string | null | undefined;
   #repeatMode: RepeatMode | null = null;
@@ -39,7 +38,7 @@ export class PlayerBarView {
   #nextHandler: ActionHandler = () => {};
   #repeatHandler: ActionHandler = () => {};
   #nowPlayingHandler: ActionHandler = () => {};
-  #structureHandler: ActionHandler = () => {};
+  #rightColumnHandler: ActionHandler = () => {};
   #muteHandler: ActionHandler = () => {};
   #seekHandler: ValueHandler = () => {};
   #volumeHandler: ValueHandler = () => {};
@@ -76,12 +75,12 @@ export class PlayerBarView {
     this.#expand.setAttribute("aria-expanded", String(isOpen));
   }
 
-  onToggleStructure(handler: ActionHandler): void {
-    this.#structureHandler = handler;
+  onToggleRightColumn(handler: ActionHandler): void {
+    this.#rightColumnHandler = handler;
   }
 
-  setStructureOpen(isOpen: boolean): void {
-    setButtonIcon(this.#structure, "structure", isOpen ? "Ocultar estructura" : "Mostrar estructura");
+  setRightColumnOpen(isOpen: boolean): void {
+    setButtonIcon(this.#structure, "structure", isOpen ? "Ocultar panel lateral" : "Mostrar panel lateral");
     this.#structure.setAttribute("aria-pressed", String(isOpen));
   }
 
@@ -117,7 +116,7 @@ export class PlayerBarView {
 
   private renderSong(song: Song | null): void {
     this.#title.textContent = song?.title ?? EMPTY_TITLE;
-    this.#artist.textContent = song === null ? "" : song.artist || UNKNOWN_ARTIST;
+    this.#artist.textContent = song === null ? "" : artistLabel(song.artist);
     this.#title.title = song?.title ?? "";
     this.renderCover(song?.coverUrl ?? null);
   }
@@ -197,7 +196,7 @@ export class PlayerBarView {
     this.#next.addEventListener("click", () => this.#nextHandler());
     this.#repeat.addEventListener("click", () => this.#repeatHandler());
     this.#now.addEventListener("click", () => this.requestNowPlaying());
-    this.#structure.addEventListener("click", () => this.#structureHandler());
+    this.#structure.addEventListener("click", () => this.#rightColumnHandler());
     this.#mute.addEventListener("click", () => this.#muteHandler());
     this.#volume.addEventListener("input", () => this.#volumeHandler(this.#volume.valueAsNumber));
     this.#seek.addEventListener("input", () => this.previewSeek());

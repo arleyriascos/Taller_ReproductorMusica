@@ -217,6 +217,67 @@ describe("Playlist removing", () => {
   });
 });
 
+describe("Playlist moving", () => {
+  it("moves a node up and down keeping valid links", () => {
+    const playlist = playlistOf(a, b, c);
+    playlist.moveUp(nodeAt(playlist, 3));
+    expect(titlesOf(playlist)).toEqual(["A", "C", "B"]);
+    expectValidLinks(playlist);
+    playlist.moveDown(nodeAt(playlist, 1));
+    expect(titlesOf(playlist)).toEqual(["C", "A", "B"]);
+    expectValidLinks(playlist);
+  });
+
+  it("does nothing at the edges", () => {
+    const playlist = playlistOf(a, b, c);
+    playlist.moveUp(nodeAt(playlist, 1));
+    playlist.moveDown(nodeAt(playlist, 3));
+    expect(titlesOf(playlist)).toEqual(["A", "B", "C"]);
+    expect(playlist.history).toHaveLength(3);
+  });
+
+  it("does nothing on a single-node playlist", () => {
+    const playlist = playlistOf(a);
+    playlist.moveUp(nodeAt(playlist, 1));
+    playlist.moveDown(nodeAt(playlist, 1));
+    expect(titlesOf(playlist)).toEqual(["A"]);
+  });
+
+  it("keeps the current node when the current node moves", () => {
+    const playlist = playlistOf(a, b, c);
+    const current = nodeAt(playlist, 2);
+    playlist.select(current);
+    playlist.moveDown(current);
+    expect(playlist.current).toBe(current);
+    expect(titlesOf(playlist)).toEqual(["A", "C", "B"]);
+    expect(playlist.previous()?.value).toBe(c);
+  });
+
+  it("keeps the current node when another node moves past it", () => {
+    const playlist = playlistOf(a, b, c);
+    const current = nodeAt(playlist, 2);
+    playlist.select(current);
+    playlist.moveUp(nodeAt(playlist, 3));
+    playlist.moveUp(nodeAt(playlist, 2));
+    expect(playlist.current).toBe(current);
+    expect(titlesOf(playlist)).toEqual(["C", "A", "B"]);
+    expectValidLinks(playlist);
+  });
+
+  it("records the move in the history", () => {
+    const playlist = playlistOf(a, b, c);
+    playlist.moveUp(nodeAt(playlist, 3));
+    expect(playlist.lastOperation).toMatchObject({ type: "move", index: 1, valueLabel: "C", previousLabel: "A", nextLabel: "B" });
+  });
+
+  it("rejects a node from another playlist", () => {
+    const playlist = playlistOf(a, b);
+    const foreign = playlistOf(c, a, b);
+    expect(() => playlist.moveUp(nodeAt(foreign, 2))).toThrow(Error);
+    expect(titlesOf(playlist)).toEqual(["A", "B"]);
+  });
+});
+
 describe("Playlist navigation", () => {
   it("select sets current to a node of the playlist", () => {
     const playlist = playlistOf(a, b);

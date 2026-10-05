@@ -1,4 +1,4 @@
-import { createIcon, createIconButton, type IconName } from "./icons";
+import { createIcon, createIconButton, createLabeledButton, type IconName } from "./icons";
 
 export type NotificationTone = "info" | "success" | "error";
 
@@ -15,6 +15,8 @@ export class NotificationView {
   readonly #root: HTMLElement;
   readonly #toasts = document.createElement("div");
   readonly #progress = document.createElement("p");
+  readonly #banner = document.createElement("div");
+  readonly #bannerAction = createLabeledButton("folder", "Cargar carpeta", "button button-secondary");
 
   constructor(root: HTMLElement) {
     this.#root = root;
@@ -22,7 +24,15 @@ export class NotificationView {
     this.#progress.className = "progress-notice";
     this.#progress.setAttribute("role", "status");
     this.#progress.hidden = true;
-    this.#root.append(this.#progress, this.#toasts);
+    this.#root.append(this.createBanner(), this.#progress, this.#toasts);
+  }
+
+  onReconnectRequested(handler: () => void): void {
+    this.#bannerAction.addEventListener("click", handler);
+  }
+
+  setReconnectBannerVisible(isVisible: boolean): void {
+    this.#banner.hidden = !isVisible;
   }
 
   show(message: string, tone: NotificationTone = "info"): void {
@@ -42,6 +52,18 @@ export class NotificationView {
   hideProgress(): void {
     this.#progress.hidden = true;
     this.#progress.textContent = "";
+  }
+
+  private createBanner(): HTMLElement {
+    const text = Object.assign(document.createElement("p"), {
+      className: "banner-text",
+      textContent: "Reconecta tus archivos para escucharlos",
+    });
+    this.#banner.className = "banner";
+    this.#banner.setAttribute("role", "status");
+    this.#banner.hidden = true;
+    this.#banner.append(createIcon("alert"), text, this.#bannerAction);
+    return this.#banner;
   }
 
   private createToast(message: string, tone: NotificationTone): HTMLDivElement {

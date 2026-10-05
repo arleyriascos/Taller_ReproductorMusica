@@ -17,11 +17,13 @@ Every data-structure test ends by asserting the invariants of `DATA_STRUCTURE.md
 - `indexOf` present and absent; `find` match and no match.
 - `forward` and `backward` on empty, 1 and many.
 - `clear` empties and detaches.
+- `moveNode`: head to tail, tail to head, a middle node forward and backward, one step each way, to the same index (nothing changes), single-node list, every node to every index; invalid indexes (-1, `length`, 1.5) → `RangeError` with the list unchanged; the moved node keeps its identity and so does every other node; the list keeps working after moves.
 
 ### TrackedLinkedList.test.ts
 - Delegates results and `head`/`tail`/`length` to the inner list.
 - Records type, index, value label and neighbor labels for each mutation.
 - Records the node references read from the real links: `append`, `prepend` and `insert` in the middle store `previousNode`, the inserted `node` and `nextNode`; `remove` and `removeNode` (head, middle, tail, only node) store the two neighbors that became linked and `node: null`; `clear` stores three `null`. The history keeps the references of older operations.
+- `moveNode` records `move` with `index = toIndex`, the moved `node` and its new `previousNode` / `nextNode`.
 - Failing operation records nothing.
 - History limited to 20 entries.
 
@@ -30,6 +32,7 @@ Every data-structure test ends by asserting the invariants of `DATA_STRUCTURE.md
 - `next`/`previous` move `current`; `hasNext`/`hasPrevious` false at the edges.
 - Removing current with next → next; at tail → previous; only node → `null`.
 - `selectFirst` / `selectLast`: `null` on empty; move `current` to `head` / `tail` from anywhere; same node with one song; never make the list circular (`next()` at tail and `previous()` at head still return `null`) and record no operation.
+- `moveUp` / `moveDown` move a node one place with valid links and do nothing at the edges; `current` stays on the same node (when it is the moved node and when another node moves past it); the history records `move`.
 - `removeAllOf` removes every node holding the song.
 - `clone`: same order, different nodes, same `Song` objects, empty history, `current` null, original unchanged after modifying the clone.
 
@@ -45,11 +48,22 @@ Every data-structure test ends by asserting the invariants of `DATA_STRUCTURE.md
 - `removeSongEverywhere` removes every node of the song from the Library and all playlists and makes the song unavailable.
 - `duplicatePlaylist`: names "(copia)", "(copia 2)", "(copia 3)"; respects 40 characters; the copy is independent; unknown id throws.
 
+- `toStoredState` / `restore`: round trip keeps the order of the Library and of every playlist, duplicated songs inside a playlist, and unavailable songs; restored songs are unavailable with their saved id; `addTracks` after `restore` reconnects them keeping their ids; restoring an empty state; restoring into a manager that already has data throws.
+
+### PlaylistStorage.test.ts
+Runs in Node with a fake `Storage`.
+- State and preferences round trip; nothing stored → `null`; corrupt JSON → `null`; wrong version, lists pointing to unknown songs, duplicated song ids, malformed songs or playlists and invalid preferences are rejected; `clear` removes both keys; a write failure (quota) or missing storage is reported once through the callback and never throws.
+
+### AudioStore.test.ts
+Runs in Node without IndexedDB.
+- Without IndexedDB, or when opening the database fails, every operation resolves without throwing (`get` and `usage` give `null`) and the failure is reported once. The real IndexedDB paths are validated manually (M93–M96).
+
 ### format.test.ts
 - `formatTime`: m:ss, h:mm:ss, fractions dropped, "—:—" for 0, negative, NaN and Infinity.
 - `formatElapsed`: same format, "0:00" for invalid values.
 - `formatTotal`: rounds up to minutes, "N h M min" from 60 minutes, "0 min" for invalid values.
 - `countLabel`: singular only for exactly 1.
+- `formatMegabytes`: one decimal with a comma; 0 for invalid values.
 - `comparableText`: ignores case, spaces, accents, dieresis and circumflex; "ñ" stays distinct in composed and decomposed form; blank text → "".
 
 ### SongLoader.test.ts
@@ -79,7 +93,7 @@ Fake `fetch` returning real `Response` objects.
 - Results: 404 → search with the closest duration; results farther than 5 s rejected; first result with lyrics when the duration is unknown; synced preferred over plain; plain used when there is no synced text; instrumental; empty search → not-found; server error → error.
 - Cache: found and not-found cached per song; network error not cached (retry asks again); concurrent calls share one in-flight promise.
 
-`MusicPlayer` is not unit-tested (it depends on the browser audio element); it is validated manually (M08–M14, M20, M21, M34, M37–M43, M46–M48). `NowPlayingView` is validated manually (M49–M66). `StructurePanelView` is validated manually (M25, M26, M67–M86).
+`MusicPlayer` is not unit-tested (it depends on the browser audio element); it is validated manually (M08–M14, M20, M21, M34, M37–M43, M46–M48). `NowPlayingView` is validated manually (M49–M66). `StructurePanelView` is validated manually (M25, M26, M67–M86). `NowPlayingPanelView`, the move buttons, the banner and the sidebar footer are validated manually (M87–M96).
 
 ## 2. Manual
 
@@ -109,10 +123,10 @@ Fake `fetch` returning real `Response` objects.
 | M22 | Remove song from Library | Disappears from every playlist |
 | M23 | Switch visible playlist while playing | Playback continues in its own list |
 | M24 | Delete the playing playlist | Playback stops |
-| M25 | Structure panel open/close | Visible by default from 1100px, hidden below; toggle and close button work (state remembered only after persistence) |
+| M25 | Right column open/close | Visible by default from 1100px, hidden below; toggle and close button work; the open state and the selected tab survive a reload |
 | M26 | Panel after insert/remove | Nodes, labels and last operation correct |
-| M27 | Reload page | Playlists kept, songs unavailable, banner shown |
-| M28 | Reconnect folder | Matching songs available again |
+| M27 | Reload page with stored audio | Playlists, order and preferences kept; songs available again with cover and lyrics, no banner, no reselection |
+| M28 | Songs whose audio is not stored (storage blocked or cleared), reload, then "Cargar carpeta" | Rows muted with "Archivo no disponible", banner shown; matching songs available again after reconnecting, toast says "reconectadas" |
 | M29 | Duplicate playlist, then edit copy | Original unchanged |
 | M30 | Light and dark system theme | Both readable |
 | M31 | Mobile width | Drawer, bottom sheet, compact player |
@@ -171,6 +185,17 @@ Fake `fetch` returning real `Response` objects.
 | M84 | Light and dark theme | Cards, tags, `current`, neighbors and flash readable in both |
 | M85 | "Reducir movimiento" | No flash animation: the changed nodes keep a static highlight until the next change; scroll is instant |
 | M86 | Screen reader | Each new operation sentence is announced once (`aria-live="polite"`); cards read "Reproducir «título», nodo i" |
+| M87 | Right column tabs | "Sonando" is the default; "Estructura" shows the structure panel unchanged; arrows, Home and End move between tabs; the player bar toggle shows and hides the whole column |
+| M88 | Nothing playing | "Nada sonando" with its hint |
+| M89 | Playing in the middle of a list, then at head and tail (repeat off and "toda la lista") | Cards show the titles of `prev` and `next`; "Inicio de la lista" / "Fin de la lista" at the ends; with repeat "toda la lista" the wrap target with "(vuelve al final)" / "(vuelve al inicio)"; a click on a card plays that node |
+| M90 | "A continuación" in "Sonando" with 12 songs after the current one | 8 items in list order; "Ver todo" opens "Reproduciendo ahora" on its queue tab; the expand button opens it too |
+| M91 | "Subir" / "Bajar" on first, middle and last rows; with a search filter active | Disabled at the edges; the order changes and the structure tab says "Se movió «X» al índice i: ahora está entre «A» y «B»", flashing the moved node; the playing song keeps playing; buttons hidden while searching |
+| M92 | "Duplicar" on the Library and on a playlist | The copy is created and shown, toast "Se creó «nombre (copia)»"; editing the copy leaves the original unchanged |
+| M93 | Load songs, reload | Songs play with no reselection; the sidebar footer shows "N canciones en este navegador · X MB"; volume, mute, repeat, open column and tab restored |
+| M94 | Remove a song from the Library, reload | The footer count and size drop; the song does not come back |
+| M95 | "Borrar datos guardados" and confirm | The app reloads empty; no keys left in `localStorage`, the `musongs` IndexedDB store is empty |
+| M96 | Block IndexedDB (private window or simulated failure), load songs, reload | One error toast; the songs play in the session; after reload they are unavailable with the banner; clicking one shows "Esta canción no está disponible" and changes neither the current song nor the context |
+| M97 | Tablet and phone widths, light and dark | The two-tab column, banner and footer fit with no horizontal scroll |
 
 ## 3. Before every push
 

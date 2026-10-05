@@ -20,40 +20,22 @@ export class DoublyLinkedList<T> implements LinkedList<T> {
 
   append(value: T): Node<T> {
     const node = new Node(value);
-    if (this.#tail === null) {
-      this.#head = node;
-    } else {
-      node.prev = this.#tail;
-      this.#tail.next = node;
-    }
-    this.#tail = node;
+    this.linkAtTail(node);
     this.#length++;
     return node;
   }
 
   prepend(value: T): Node<T> {
     const node = new Node(value);
-    if (this.#head === null) {
-      this.#tail = node;
-    } else {
-      node.next = this.#head;
-      this.#head.prev = node;
-    }
-    this.#head = node;
+    this.linkAtHead(node);
     this.#length++;
     return node;
   }
 
   insert(index: number, value: T): Node<T> {
     this.assertIndex(index, this.#length);
-    if (index === 0) {
-      return this.prepend(value);
-    }
-    if (index === this.#length) {
-      return this.append(value);
-    }
     const node = new Node(value);
-    this.linkAfter(this.traverseToIndex(index - 1), node);
+    this.linkAt(index, node);
     this.#length++;
     return node;
   }
@@ -68,6 +50,16 @@ export class DoublyLinkedList<T> implements LinkedList<T> {
     this.detach(node);
     this.#length--;
     return node.value;
+  }
+
+  moveNode(node: Node<T>, toIndex: number): void {
+    this.assertBelongsAtEnds(node);
+    this.assertIndex(toIndex, this.#length - 1);
+    this.unlink(node);
+    this.detach(node);
+    this.#length--;
+    this.linkAt(toIndex, node);
+    this.#length++;
   }
 
   traverseToIndex(index: number): Node<T> {
@@ -124,6 +116,36 @@ export class DoublyLinkedList<T> implements LinkedList<T> {
     this.#head = null;
     this.#tail = null;
     this.#length = 0;
+  }
+
+  private linkAt(index: number, node: Node<T>): void {
+    if (index === 0) {
+      this.linkAtHead(node);
+    } else if (index === this.#length) {
+      this.linkAtTail(node);
+    } else {
+      this.linkAfter(this.traverseToIndex(index - 1), node);
+    }
+  }
+
+  private linkAtHead(node: Node<T>): void {
+    if (this.#head === null) {
+      this.#tail = node;
+    } else {
+      node.next = this.#head;
+      this.#head.prev = node;
+    }
+    this.#head = node;
+  }
+
+  private linkAtTail(node: Node<T>): void {
+    if (this.#tail === null) {
+      this.#head = node;
+    } else {
+      node.prev = this.#tail;
+      this.#tail.next = node;
+    }
+    this.#tail = node;
   }
 
   private linkAfter(leader: Node<T>, node: Node<T>): void {

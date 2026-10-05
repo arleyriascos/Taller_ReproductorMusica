@@ -1,11 +1,11 @@
 import { DialogView } from "./DialogView";
-import { comparableText, countLabel, formatTime, formatTotal } from "./format";
+import { artistLabel, comparableText, countLabel, formatTime, formatTotal } from "./format";
 import { createIcon, createIconButton, createLabeledButton, setButtonIcon, setCover } from "./icons";
 import type { Node } from "./Node";
 import type { Playlist } from "./Playlist";
 import type { LoadKind } from "./SidebarView";
 import type { Song } from "./Song";
-import type { PlaylistNameIssue } from "./types";
+import type { MoveDirection, PlaylistNameIssue } from "./types";
 
 export type SongPlacement = { kind: "start" } | { kind: "end" } | { kind: "position"; position: number };
 
@@ -28,10 +28,10 @@ interface FocusMemory {
 }
 
 type NodeHandler = (playlistId: string, node: Node<Song>) => void;
+type MoveHandler = (playlistId: string, node: Node<Song>, direction: MoveDirection) => void;
 type PlaylistHandler = (playlistId: string) => void;
 type RenameHandler = (playlistId: string, name: string) => PlaylistNameIssue | null;
 
-const UNKNOWN_ARTIST = "Artista desconocido";
 const NO_PLAYLISTS = "Primero crea una playlist con «Nueva playlist»";
 const EMPTY_LIBRARY = "Tu biblioteca está vacía. Carga canciones primero.";
 
@@ -84,10 +84,12 @@ export class TrackListView {
   #playHandler: NodeHandler = () => {};
   #playPlaylistHandler: PlaylistHandler = () => {};
   #removeNodeHandler: NodeHandler = () => {};
+  #moveHandler: MoveHandler = () => {};
   #removeSongHandler: (song: Song) => void = () => {};
   #addHandler: (request: AddSongRequest) => void = () => {};
   #renameHandler: RenameHandler = () => null;
   #deleteHandler: PlaylistHandler = () => {};
+  #duplicateHandler: PlaylistHandler = () => {};
   #loadHandler: (kind: LoadKind) => void = () => {};
 
   constructor(root: HTMLElement) {
@@ -113,6 +115,10 @@ export class TrackListView {
     this.#removeNodeHandler = handler;
   }
 
+  onMoveNode(handler: MoveHandler): void {
+    this.#moveHandler = handler;
+  }
+
   onRemoveFromLibrary(handler: (song: Song) => void): void {
     this.#removeSongHandler = handler;
   }
@@ -127,6 +133,10 @@ export class TrackListView {
 
   onDeletePlaylist(handler: PlaylistHandler): void {
     this.#deleteHandler = handler;
+  }
+
+  onDuplicatePlaylist(handler: PlaylistHandler): void {
+    this.#duplicateHandler = handler;
   }
 
   onLoadRequested(handler: (kind: LoadKind) => void): void {
@@ -193,7 +203,7 @@ export class TrackListView {
   private renderHeader(playlist: Playlist): void {
     this.#eyebrow.textContent = playlist.isLibrary ? "Tu música" : "Playlist";
     this.#title.textContent = playlist.name;
-    this.#actions.replaceChildren(...(playlist.isLibrary ? [] : TrackListView.createPlaylistButtons()));
+    this.#actions.replaceChildren(...TrackListView.createPlaylistButtons(playlist.isLibrary));
     this.#searchField.hidden = playlist.length === 0;
   }
 
@@ -243,6 +253,7 @@ export class TrackListView {
     this.#noResultsText.textContent = `Sin resultados para «${this.#search.value.trim()}»`;
     this.#noResults.hidden = !hasNoResults;
     this.#content.classList.toggle("has-no-results", hasNoResults);
+    this.#content.classList.toggle("is-filtering", isFiltering);
   }
 
   private updateSearch(): void {
@@ -282,7 +293,7 @@ export class TrackListView {
       Object.assign(document.createElement("span"), { className: "track-album", textContent: song.album }),
       Object.assign(document.createElement("span"), { className: "track-duration", textContent: formatTime(song.duration) }),
     );
-    row.append(play, TrackListView.createRowActions(song, isLibrary));
+    row.append(play, TrackListView.createRowActions(node, isLibrary));
     this.#rowNodes.set(row, node);
     this.#rowsByNode.set(node, row);
     return row;
@@ -315,6 +326,8 @@ export class TrackListView {
   private handleRowAction(action: string, playlist: Playlist, node: Node<Song>): void {
     if (action === "play") {
       this.#playHandler(playlist.id, node);
+    } else if (action === "move-up" || action === "move-down") {
+      this.#moveHandler(playlist.id, node, action === "move-up" ? "up" : "down");
     } else if (action === "add") {
       this.openAddFromSong(node.value);
     } else if (action === "remove" && playlist.isLibrary) {
@@ -333,6 +346,8 @@ export class TrackListView {
       this.openAddToPlaylist(playlist);
     } else if (action === "rename") {
       this.openRename(playlist);
+    } else if (action === "duplicate-playlist") {
+      this.#duplicateHandler(playlist.id);
     } else if (action === "delete-playlist") {
       this.openDelete(playlist);
     } else if (action === "load-files" || action === "load-folder") {
@@ -451,7 +466,7 @@ export class TrackListView {
     for (const node of library.nodes()) {
       const song = node.value;
       this.#songOptions.set(song.id, song);
-      this.#songSelect.append(new Option(`${song.title} — ${song.artist || UNKNOWN_ARTIST}`, song.id));
+      this.#songSelect.append(new Option(`${song.title} — ${artistLabel(song.artist)}`, song.id));
     }
   }
 
@@ -535,7 +550,7 @@ export class TrackListView {
     for (const node of memory.nodes) {
       const row = this.#rowsByNode.get(node);
       if (row !== undefined && !row.hidden) {
-        (row.querySelector<HTMLElement>(`[data-action="${memory.action}"]`) ?? row.querySelector<HTMLElement>("button"))?.focus();
+        (row.querySelector<HTMLElement>(`[data-action="${memory.action}"]:not(:disabled)`) ?? row.querySelector<HTMLElement>("button:not(:disabled)"))?.focus();
         return;
       }
     }
@@ -561,14 +576,19 @@ export class TrackListView {
     return playlist.length === 0 ? count : `${count} · ${formatTotal(playlist.totalDuration())}`;
   }
 
-  private static createPlaylistButtons(): HTMLButtonElement[] {
+  private static createPlaylistButtons(isLibrary: boolean): HTMLButtonElement[] {
+    const duplicate = createLabeledButton("copy", "Duplicar", "button button-secondary");
+    duplicate.dataset.action = "duplicate-playlist";
+    if (isLibrary) {
+      return [duplicate];
+    }
     const add = createLabeledButton("plus", "Agregar canción", "button button-primary");
     const rename = createLabeledButton("edit", "Renombrar", "button button-secondary");
     const remove = createLabeledButton("trash", "Eliminar playlist", "button button-ghost button-ghost-danger");
     add.dataset.action = "add-song";
     rename.dataset.action = "rename";
     remove.dataset.action = "delete-playlist";
-    return [add, rename, remove];
+    return [add, rename, duplicate, remove];
   }
 
   private static createEmptyState(data: TrackListData): HTMLElement {
@@ -631,7 +651,7 @@ export class TrackListView {
 
   private static createSongText(song: Song): HTMLSpanElement {
     const text = Object.assign(document.createElement("span"), { className: "track-text" });
-    const detail = song.isAvailable() ? song.artist || UNKNOWN_ARTIST : "Archivo no disponible";
+    const detail = song.isAvailable() ? artistLabel(song.artist) : "Archivo no disponible";
     text.append(
       Object.assign(document.createElement("span"), { className: "track-title", textContent: song.title }),
       Object.assign(document.createElement("span"), { className: "track-artist", textContent: detail }),
@@ -639,14 +659,21 @@ export class TrackListView {
     return text;
   }
 
-  private static createRowActions(song: Song, isLibrary: boolean): HTMLSpanElement {
+  private static createRowActions(node: Node<Song>, isLibrary: boolean): HTMLSpanElement {
+    const song = node.value;
     const actions = Object.assign(document.createElement("span"), { className: "track-actions" });
+    const up = createIconButton("chevronUp", `Subir «${song.title}»`, "icon-button track-action track-move");
+    const down = createIconButton("chevronDown", `Bajar «${song.title}»`, "icon-button track-action track-move");
     const add = createIconButton("plus", `Agregar «${song.title}» a una playlist`, "icon-button track-action");
     const removeLabel = isLibrary ? "Eliminar de la biblioteca" : "Quitar de esta playlist";
     const remove = createIconButton("trash", `${removeLabel}: ${song.title}`, "icon-button track-action track-action-danger");
+    up.dataset.action = "move-up";
+    down.dataset.action = "move-down";
+    up.disabled = node.prev === null;
+    down.disabled = node.next === null;
     add.dataset.action = "add";
     remove.dataset.action = "remove";
-    actions.append(add, remove);
+    actions.append(up, down, add, remove);
     return actions;
   }
 

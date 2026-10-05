@@ -30,13 +30,15 @@ Individual work. Assigned 2026-09-28, due 2026-10-06.
 | Search | Presentation only: hides rows of the visible list, never copies or reorders it |
 | Removing the current song | Move to next; if none, to previous; if none, player becomes empty |
 | Playback context | The list where the user pressed play; independent of the list being viewed |
-| Persistence | `localStorage` stores structure and metadata only; files are reconnected by fingerprint |
+| Persistence | `localStorage` stores structure, metadata and preferences; the audio, covers and lyrics files are kept in the browser's IndexedDB (never uploaded). If the audio is missing, songs are reconnected by fingerprint |
+| Move a song | New list operation `moveNode(node, toIndex)` (unlink and relink the same node), `Playlist.moveUp` / `moveDown`, recorded as `move` by the Decorator |
+| Right column | Two tabs: "Sonando" (cover, `prev` / `next` neighbors, queue) and "Estructura" (the structure panel) |
 | Patterns | Singleton (`MusicPlayer`), Decorator (`TrackedLinkedList`), Prototype (`Playlist.clone`) |
-| Structure panel | Shows the visible playlist. Changed in stage 8: visible by default on desktop (≥ 1100px) as a right column, because it is the main academic showcase; hidden by default on tablets (overlay) and phones (bottom sheet). Toggle in the player bar. The open/closed preference is not remembered until persistence |
+| Structure panel | Shows the visible playlist. Changed in stage 8: visible by default on desktop (≥ 1100px) as a right column, because it is the main academic showcase; hidden by default on tablets (overlay) and phones (bottom sheet). Toggle in the player bar. Since stage 9 the open state and the selected tab are remembered |
 | Operation data for the panel | `ListOperation<T>` (Decorator) records `previousNode`, `node` and `nextNode` besides the labels, so the panel knows which nodes changed without touching `DoublyLinkedList` |
 | Now playing view | Large cover and controls; "A continuación" built by following `next` from the current node, "Anteriores" by following `prev` |
 | Lyrics | Priority: paired `.lrc` file → lyrics embedded in the audio file → LRCLIB. Requested only when the "Letra" tab is open |
-| External APIs | LRCLIB (lyrics) receives only title, artist, album and duration; never audio or file data. Audius planned for "Explorar" |
+| External APIs | LRCLIB (lyrics) receives only title, artist, album and duration; never audio or file data. Audius ("Explorar") is future work |
 | App name | Musongs |
 | UI language | Spanish; code in English |
 | Theme | Follows the operating system (light/dark), coral accent tuned per mode, no manual toggle |
@@ -49,7 +51,9 @@ Level 1 (mandatory, done): Library loading (files and folder), metadata, playlis
 
 Extras already built (phase 8A): repeat (off / all / one), search in the visible list, playlist play button, animated bars on the current row, Media Session (lock screen and media keys).
 
-Next, in this order: now playing view with queue and lyrics; structure panel with Decorator; "Explorar" with Audius (Adapter); persistence with reconnection; duplicate playlist with Prototype, keyboard shortcuts and drag and drop; final tests and production verification.
+Built after that: now playing view with queue and lyrics; structure panel with Decorator; right column with the "Sonando" tab; move a song up and down; duplicate playlist with Prototype; persistence with the audio stored locally in IndexedDB and a reconnection fallback.
+
+Trabajo futuro: "Explorar" with Audius (Adapter), keyboard shortcuts and drag and drop to reorder.
 
 Out of scope: shuffle, favorites, listening history, visualizer, manual theme toggle, uploading or streaming the user's own audio.
 
@@ -68,11 +72,12 @@ Out of scope: shuffle, favorites, listening history, visualizer, manual theme to
 | 8 | Visual design and responsive polish | Done |
 | 8A | Repeat, search, playlist play button, now-playing bars, Media Session | Done |
 | 9 | "Reproduciendo ahora" view: queue from `next`, "Anteriores" from `prev`, lyrics (`.lrc`, embedded, LRCLIB) | Done |
-| 10 | Structure panel with `TrackedLinkedList` (Decorator): live chain of the visible playlist, window of ±15 nodes, last operation with flash, history | In review |
-| 11 | "Explorar" with Audius (Adapter) | |
-| 12 | Persistence and file reconnection | |
-| 13 | Duplicate playlist (Prototype), keyboard shortcuts, drag and drop | |
-| 14 | Final tests and production verification on Vercel | |
+| 10 | Structure panel with `TrackedLinkedList` (Decorator): live chain of the visible playlist, window of ±15 nodes, last operation with flash, history | Done |
+| 11 | Right column with "Sonando" and "Estructura" tabs; `moveNode`, `moveUp` / `moveDown`; duplicate playlist (Prototype) | Done |
+| 12 | Persistence: state and preferences in `localStorage`, audio in IndexedDB, reconnection fallback, clear saved data | Done |
+| 13 | Documentation update | Done |
+| 14 | Final production verification on Vercel | Pending (student) |
+| Future | "Explorar" with Audius (Adapter), keyboard shortcuts, drag and drop to reorder | Trabajo futuro |
 
 Each implementation phase follows: prompt → agent implements and tests → report reviewed in chat → fixes → student commits and pushes.
 
@@ -87,7 +92,6 @@ Each implementation phase follows: prompt → agent implements and tests → rep
 - Add repeat, search and media session
 - Add now playing view with queue and lyrics
 - Add data structure panel
-- Add Explorar with Audius
-- Add playlist persistence and file reconnection
-- Add playlist duplication
+- Add right column with now playing tab, move and playlist duplication
+- Add local persistence with IndexedDB and file reconnection
 - Fix issues found in testing

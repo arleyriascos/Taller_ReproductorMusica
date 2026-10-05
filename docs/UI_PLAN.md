@@ -2,7 +2,7 @@
 
 ## 1. Concept
 
-Streaming-style player with an "Estructura" panel that shows the doubly linked list working live. On desktop the panel is visible by default (it is the main academic showcase); on tablets and phones it opens on demand.
+Streaming-style player with a right column of two tabs: "Sonando" (cover, previous and next neighbors, queue) and "Estructura", which shows the doubly linked list working live. On desktop the column is visible by default (the structure tab is the main academic showcase); on tablets and phones it opens on demand.
 Every element must have a function. Interface text in Spanish.
 
 ## 2. Layout
@@ -19,7 +19,7 @@ The track list hides its album column when the list itself is narrower than 720p
 
 ## 3. Regions
 
-Sidebar: "Musongs" brand · "Tu música" → Biblioteca · "Playlists" list (selected one highlighted) · "Nueva playlist" · "Cargar canciones" · "Cargar carpeta".
+Sidebar: "Musongs" brand · "Tu música" → Biblioteca · "Playlists" list (selected one highlighted) · "Nueva playlist" · "Cargar canciones" · "Cargar carpeta" · footer with the storage note and "Borrar datos guardados".
 
 Main list: header with name, "N canciones · M min", actions ("Agregar canción", rename, duplicate, delete; none for the Library), and a toolbar with the round play button and the search box "Buscar en esta lista" (both also in the Library). Rows: position (or playing indicator), cover, title, artist, album, duration, and two direct icon buttons (see section 8). Remove button label: "Quitar de esta playlist" (in the Library: "Eliminar de la biblioteca").
 
@@ -29,7 +29,7 @@ Player bar: cover, title, artist, "Abrir reproduciendo ahora" (chevron) · previ
 
 "Reproduciendo ahora": header with close button, "Reproduciendo ahora" and "Reproduciendo desde «lista»" · large cover, title, artist, album · (mobile) large controls and progress · tabs "A continuación" and "Letra".
 
-Structure panel (visible playlist): title "Estructura", subtitle "Lista doble de «nombre»", close button "Ocultar estructura" · summary `length = N · head = … · tail = …` · box "Última operación" (code form and Spanish sentence) · vertical chain of node cards (`[i]`, title, `prev:` / `next:`, tags `head`, `tail`, `current`) with "next ↓ / ↑ prev" between cards and "… N nodos antes / después" at the edges of the window · "Historial (últimas 6)" collapsed at the bottom. See section 11.
+Right column: tabs "Sonando" and "Estructura" with a close button (see section 12). Structure tab (visible playlist): title "Estructura", subtitle "Lista doble de «nombre»", close button "Ocultar estructura" · summary `length = N · head = … · tail = …` · box "Última operación" (code form and Spanish sentence) · vertical chain of node cards (`[i]`, title, `prev:` / `next:`, tags `head`, `tail`, `current`) with "next ↓ / ↑ prev" between cards and "… N nodos antes / después" at the edges of the window · "Historial (últimas 6)" collapsed at the bottom. See section 11.
 
 ## 4. States
 
@@ -38,8 +38,9 @@ Structure panel (visible playlist): title "Estructura", subtitle "Lista doble de
 | Empty Library | Illustration-free card: "Carga tu primera canción", short text, buttons "Cargar canciones" and "Cargar carpeta" |
 | Empty playlist | "Esta playlist está vacía", "Agrega canciones desde la Biblioteca" |
 | Nothing playing | Player bar shows "Elige una canción" with controls disabled |
-| Unavailable song | Row in muted color with "Archivo no disponible"; clicking explains how to reconnect |
-| After reload with saved data | Banner "Reconecta tus archivos para escucharlos" with "Cargar carpeta" |
+| Unavailable song | Row in muted color with "Archivo no disponible"; clicking shows the toast "Esta canción no está disponible" |
+| Saved songs whose audio is not stored (storage failed or cleared) | Banner "Reconecta tus archivos para escucharlos" with "Cargar carpeta" |
+| After reload with stored audio | Songs available again with cover and lyrics, no banner |
 | Rejected files | Toast "3 archivos no son compatibles" with a detail action |
 | Duplicates | Toast "2 canciones ya estaban en la biblioteca" |
 | Invalid position | Inline error inside the dialog |
@@ -133,7 +134,7 @@ Shape: 8px radius for controls, 12px for cards and panels. Icons: inline SVG, 20
 
 ## 11. Interaction decisions (stage 8: structure panel)
 
-1. Decision change: the panel is no longer minimized by default. From 1100px it is a visible right column; hiding it gives the space back to the list. Under 1100px it starts hidden. Crossing 1100px resets it to that width's default; remembering the preference arrives with persistence.
+1. Decision change: the panel is no longer minimized by default. From 1100px it is a visible right column; hiding it gives the space back to the list. Under 1100px it starts hidden. Crossing 1100px resets it to that width's default; the open state is remembered in the preferences (section 12).
 2. Toggle: icon button with linked nodes in the player bar (before mute on desktop and tablet, after repeat on phones), `aria-pressed`, labels "Mostrar estructura" / "Ocultar estructura", accent color while pressed. Pressed while "Reproduciendo ahora" is open, it closes that view and shows the panel.
 3. Tablet (768–1099px): overlay from the right above the player bar with a backdrop; Escape, the backdrop and the close button close it; focus moves to the close button on open and back to the toggle on close. Phone (< 768px): bottom sheet above the compact player, max 75% of the height, handle and close button, same closing rules. The player stays usable below both, so next / previous can be watched live.
 4. Content follows the visible playlist. `current` appears only when that playlist is the player context; its `prev` and `next` neighbors get a dashed accent border. A click on a card plays that node.
@@ -142,3 +143,16 @@ Shape: 8px radius for controls, 12px for cards and panels. Icons: inline SVG, 20
 7. Flash: only for a new operation on the playlist already shown, never on a playlist switch, playback change or progress tick, and never while the panel is closed. The sentence is announced through an `aria-live="polite"` region.
 8. Fonts: JetBrains Mono for summary, code and nodes; Manrope for the title, labels and sentences. Colors only from tokens (`--color-flash` and `--color-neighbor` are mixes of the accent).
 9. While the panel is open on desktop, toasts move to the left of it so they do not cover the chain.
+
+## 12. Interaction decisions (stage 9: right column with two tabs, move, duplicate, persistence)
+
+1. The right column (desktop column, tablet overlay, phone bottom sheet) has a `tablist` with "Sonando" (default) and "Estructura". Arrows, Home and End move between tabs. The "Estructura" tab is the structure panel of section 11, unchanged. The player bar button toggles the whole column ("Mostrar" / "Ocultar" with `aria-pressed`). The open state and the selected tab are remembered (`Preferences`).
+2. "Sonando" (`NowPlayingPanelView`): header "Sonando desde «lista»" with an expand button that opens "Reproduciendo ahora"; large square cover (generic cover when there is none); title; artist ("Artista desconocido" when empty); two cards side by side, "prev" with the title of `current.prev` and "next" with the title of `current.next`, each a button that plays that node; "A continuación" with the next 8 nodes following `next` and a "Ver todo" button that opens "Reproduciendo ahora" on its queue tab. The queue item markup is the shared `queueItem.ts` helper, also used by `NowPlayingView`.
+3. Edge cards: with no neighbor the card says "Inicio de la lista" / "Fin de la lista" and is disabled; with repeat "toda la lista" it shows the wrap target (`tail` / `head`) with the note "(vuelve al final)" / "(vuelve al inicio)".
+4. Nothing playing: "Nada sonando" with the hint "Elige una canción de tu biblioteca o de una playlist y aparecerá aquí."
+5. Move: rows get "Subir" and "Bajar" icon buttons next to the other row actions (same hover behavior), disabled at `head` / `tail` and hidden while a search filter is active (the filter shows a subset, so "up" would not match what the user sees). The operation calls `Playlist.moveUp` / `moveDown`. The structure tab writes "Se movió «X» al índice i: ahora está entre «A» y «B»" (or the head / tail / only-node variants) and flashes the moved node and its new neighbors.
+6. "Duplicar" in every playlist header, Library included: `duplicatePlaylist`, switches to the copy and shows the toast "Se creó «nombre (copia)»".
+7. Unavailable songs (restored without audio): muted rows and queue items with "Archivo no disponible". Clicking one shows the toast "Esta canción no está disponible" and changes neither `current` nor the playback context.
+8. Banner while any song is unavailable: "Reconecta tus archivos para escucharlos" with a "Cargar carpeta" button; it disappears when nothing is unavailable.
+9. Sidebar footer: "N canciones en este navegador · X MB" (hidden when browser storage is not available) and "Borrar datos guardados", which opens a confirmation dialog ("¿Borrar datos guardados?"). Confirming clears the stored audio, the saved state and the preferences and reloads the app empty.
+10. Storage failures (IndexedDB blocked, private mode, quota) show one error toast per store and the app keeps working; after a reload the songs are unavailable and the banner offers reconnection.

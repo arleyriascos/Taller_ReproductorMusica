@@ -28,6 +28,8 @@ const ICONS = {
   search: '<circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" />',
   chevronUp: '<path d="m6 15 6-6 6 6" />',
   chevronDown: '<path d="m6 9 6 6 6-6" />',
+  expand: '<path d="M14 4h6v6M10 20H4v-6" /><path d="m20 4-6.5 6.5M4 20l6.5-6.5" />',
+  copy: '<rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />',
   structure: '<rect x="3" y="3" width="8" height="6" rx="1.5" /><rect x="13" y="15" width="8" height="6" rx="1.5" /><path d="M7 9v7a2 2 0 0 0 2 2h4" /><path d="M17 15V8a2 2 0 0 0-2-2h-4" />',
 } as const;
 

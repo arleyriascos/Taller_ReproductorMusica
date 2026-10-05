@@ -72,6 +72,7 @@ Taller_ReproductorMusica/
     ├── icons.ts
     ├── format.ts
     ├── lyrics.ts
+    ├── queueItem.ts
     ├── types.ts
     ├── Node.ts
     ├── LinkedList.ts
@@ -83,12 +84,14 @@ Taller_ReproductorMusica/
     ├── SongLoader.ts
     ├── MusicPlayer.ts
     ├── PlaylistStorage.ts
+    ├── AudioStore.ts
     ├── LyricsService.ts
     ├── App.ts
     ├── SidebarView.ts
     ├── TrackListView.ts
     ├── PlayerBarView.ts
     ├── NowPlayingView.ts
+    ├── NowPlayingPanelView.ts
     ├── StructurePanelView.ts
     ├── NotificationView.ts
     ├── DialogView.ts
@@ -97,6 +100,8 @@ Taller_ReproductorMusica/
     ├── Playlist.test.ts
     ├── PlaylistManager.test.ts
     ├── SongLoader.test.ts
+    ├── PlaylistStorage.test.ts
+    ├── AudioStore.test.ts
     ├── LyricsService.test.ts
     ├── lyrics.test.ts
     └── format.test.ts
@@ -107,6 +112,9 @@ Taller_ReproductorMusica/
 `LyricsService.ts` is the only code that calls the network, and only LRCLIB with title, artist, album and duration.
 `icons.ts` holds the SVG string constants and the only helpers allowed to turn them into elements (`createIcon`, `createIconButton`, `createLabeledButton`, `setButtonIcon`), plus `setCover`, the shared cover renderer (cover image or generic music icon) used by `PlayerBarView` and `TrackListView`; this is the only place where `innerHTML` is used, and only with those constants.
 `format.ts` holds only pure formatting functions (`formatTime`, `formatElapsed`, `formatTotal`, `countLabel`, `comparableText`); `format.test.ts` tests every one of them.
+`queueItem.ts` holds the one queue-item renderer shared by `NowPlayingView` and `NowPlayingPanelView`.
+`PlaylistStorage.ts` wraps `localStorage` (state and preferences); `AudioStore.ts` wraps IndexedDB (the stored media of each song, never sent anywhere).
+`NowPlayingPanelView.ts` is the "Sonando" tab of the right column; `StructurePanelView.ts` owns the right column and its "Estructura" tab.
 `DialogView.ts` builds the native `<dialog>` forms shared by `SidebarView` and `TrackListView`.
 No other folders. `public/` only if a static asset becomes necessary, and only after asking.
 
