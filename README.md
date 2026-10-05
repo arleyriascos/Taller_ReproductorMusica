@@ -10,7 +10,7 @@ Proyecto del **Taller Reproductor de Música** del curso **Estructuras de Datos*
 
 En desarrollo. Por ahora el proyecto contiene solo la base técnica y una pantalla provisional.
 
-Despliegue: Pendiente.
+Despliegue: https://musongs.vercel.app/
 
 ## Tecnologías
 
