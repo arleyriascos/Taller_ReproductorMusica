@@ -1,0 +1,57 @@
+import { createIcon, createIconButton, type IconName } from "./icons";
+
+export type NotificationTone = "info" | "success" | "error";
+
+const DISMISS_DELAY_MS = 4000;
+const MAX_TOASTS = 3;
+
+const TONE_ICONS: Record<NotificationTone, IconName> = {
+  info: "info",
+  success: "check",
+  error: "alert",
+};
+
+export class NotificationView {
+  readonly #root: HTMLElement;
+  readonly #toasts = document.createElement("div");
+  readonly #progress = document.createElement("p");
+
+  constructor(root: HTMLElement) {
+    this.#root = root;
+    this.#toasts.className = "toast-stack";
+    this.#progress.className = "progress-notice";
+    this.#progress.setAttribute("role", "status");
+    this.#progress.hidden = true;
+    this.#root.append(this.#progress, this.#toasts);
+  }
+
+  show(message: string, tone: NotificationTone = "info"): void {
+    const toast = this.createToast(message, tone);
+    this.#toasts.append(toast);
+    while (this.#toasts.childElementCount > MAX_TOASTS) {
+      this.#toasts.firstElementChild?.remove();
+    }
+    window.setTimeout(() => toast.remove(), DISMISS_DELAY_MS);
+  }
+
+  showProgress(message: string): void {
+    this.#progress.textContent = message;
+    this.#progress.hidden = false;
+  }
+
+  hideProgress(): void {
+    this.#progress.hidden = true;
+    this.#progress.textContent = "";
+  }
+
+  private createToast(message: string, tone: NotificationTone): HTMLDivElement {
+    const toast = Object.assign(document.createElement("div"), { className: `toast toast-${tone}` });
+    toast.setAttribute("role", tone === "error" ? "alert" : "status");
+    const icon = createIcon(TONE_ICONS[tone]);
+    const text = Object.assign(document.createElement("p"), { className: "toast-text", textContent: message });
+    const close = createIconButton("close", "Cerrar aviso", "icon-button toast-close");
+    close.addEventListener("click", () => toast.remove());
+    toast.append(icon, text, close);
+    return toast;
+  }
+}

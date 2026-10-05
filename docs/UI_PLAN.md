@@ -17,9 +17,9 @@ Every element must have a function. Interface text in Spanish.
 
 Sidebar: "Musongs" brand · "Tu música" → Biblioteca · "Playlists" list (selected one highlighted) · "Nueva playlist" · "Cargar canciones" · "Cargar carpeta".
 
-Main list: header with name, "N canciones · M min", actions (rename, duplicate, delete; none for the Library). Rows: position (or playing indicator), cover, title, artist, duration, row menu. Row menu: "Agregar a…", "Quitar de esta playlist" (in the Library: "Eliminar de la biblioteca").
+Main list: header with name, "N canciones · M min", actions ("Agregar canción", rename, duplicate, delete; none for the Library). Rows: position (or playing indicator), cover, title, artist, album, duration, and two direct icon buttons (see section 8). Remove button label: "Quitar de esta playlist" (in the Library: "Eliminar de la biblioteca").
 
-"Agregar a…" dialog: destination playlist selector (includes the Library only when the song is not already there), radio group Inicio / Final / Posición, number input `1..length+1` shown only for Posición, "Agregar" and "Cancelar".
+"Agregar canción" dialog: one dialog with two entry modes (see section 8), radio group Inicio / Final / Posición, number input `1..length+1` of the destination shown only for Posición, "Agregar" and "Cancelar".
 
 Player bar: cover, title, artist · previous, play/pause, next · current time, progress (seekable), duration · mute, volume · structure panel button.
 
@@ -78,3 +78,20 @@ Shape: 8px radius for controls, 12px for cards and panels. Icons: inline SVG, 20
 - Visible focus ring.
 - Everything usable with keyboard (Tab, Enter, Space, Escape closes dialogs and drawer).
 - Progress and volume are native `input type="range"` with labels.
+
+## 8. Interaction decisions (stage 5)
+
+1. Rows have two direct icon buttons instead of a "⋯" menu: "Agregar a…" (plus icon) and remove (trash icon). On pointer devices with hover they appear on row hover or keyboard focus; on touch devices and screens under 768px they are always visible.
+2. One "Agregar canción" dialog with two entry modes that share the same code:
+   - From a row (song fixed): choose the destination playlist and the position. Only user playlists are destinations; the Library is never a destination.
+   - From the playlist header button "Agregar canción" (destination fixed): choose a song from the Library with a native select, and the position.
+   - Position: radio group Inicio / Final / Posición (default Final). The number input (1..length+1 of the destination) only appears for Posición. Invalid input shows "Escribe un número entre 1 y N" inline and keeps the dialog open.
+3. Removing from a playlist removes only that node, without confirmation. Removing from the Library asks for confirmation ("Se quitará de la biblioteca y de todas tus playlists") and calls `removeSongEverywhere`.
+4. Each view owns the dialogs it opens: `SidebarView` → "Nueva playlist"; `TrackListView` → rename, add song, confirm delete playlist, confirm remove from Library. All are native `<dialog>` opened with `showModal()`, built by the shared `DialogView`; Escape and a click on the backdrop close them, and focus returns to the control that opened them.
+5. Name validation: the view calls an `App` handler that returns `PlaylistNameIssue | null` synchronously and shows the message inline: `empty` → "Escribe un nombre", `too-long` → "Máximo 40 caracteres", `duplicate` → "Ya tienes una playlist con ese nombre".
+6. `format.ts` holds pure functions: `formatTime(seconds)` → "m:ss" or "h:mm:ss", "—:—" for 0 or invalid (durations); `formatElapsed(seconds)` → same format but "0:00" for 0 (elapsed time in the player); `formatTotal(seconds)` → "N min" / "N h M min" (rounded up); `countLabel(count, singular, plural)`.
+7. `icons.ts` exports SVG markup written for this project. It is turned into elements only by `createIcon` (and the button helpers built on it), which parses trusted constant markup selected by icon name; user data never goes through it.
+8. `document.title` is "▶ <title> · Musongs" while playing, "<title> · Musongs" when paused with a song, and "Musongs" otherwise.
+9. While loading files, a persistent notice "Cargando canciones…" is shown in the notification area and every load button is disabled. After loading, one toast summarizes only the non-zero counts (agregadas, duplicadas, reconectadas, no compatibles, ignoradas). Files that are not audio (pdf, jpg) count as "ignoradas"; audio formats the browser cannot play count as "no compatibles".
+10. Toasts auto-dismiss after about 4 s and have a close button; errors use `role="alert"`, the rest `role="status"`.
+11. Dragging the progress range previews the time without seeking; the seek happens on release. Incoming progress does not move the thumb during the drag.

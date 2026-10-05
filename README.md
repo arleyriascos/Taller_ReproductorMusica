@@ -8,9 +8,20 @@ Proyecto del **Taller Reproductor de Música** del curso **Estructuras de Datos*
 
 ## Estado
 
-En desarrollo. Por ahora el proyecto contiene solo la base técnica y una pantalla provisional.
+En desarrollo. La interfaz principal (nivel 1) ya funciona; el panel de estructura, la persistencia y la duplicación de playlists llegarán en las siguientes etapas.
 
 Despliegue: https://musongs.vercel.app/
+
+## Funcionalidades
+
+- **Cargar música local**: botones «Cargar canciones» (varios archivos) y «Cargar carpeta». Se leen título, artista, álbum, carátula y duración de cada archivo; si faltan, se usa el nombre del archivo y una carátula genérica. Al terminar aparece un resumen: canciones agregadas, duplicadas, no compatibles e ignoradas.
+- **Biblioteca**: reúne todas las canciones cargadas, sin repetidas. Es una lista doblemente enlazada.
+- **Playlists**: crear, renombrar y eliminar. Cada playlist es su propia lista doblemente enlazada y puede contener la misma canción más de una vez.
+- **Agregar una canción al inicio, al final o en cualquier posición**: desde el botón «+» de una fila (eliges la playlist de destino) o desde «Agregar canción» en la cabecera de una playlist (eliges la canción de la biblioteca). Las posiciones fuera de rango se rechazan con un mensaje.
+- **Quitar canciones**: en una playlist se quita solo esa aparición; en la biblioteca, tras confirmar, se quita de la biblioteca y de todas las playlists.
+- **Reproducción real** en el navegador: reproducir y pausar, siguiente y anterior (siguen los enlaces `next` y `prev` del nodo actual y se desactivan en los extremos), avance automático al terminar una canción, barra de progreso para saltar, tiempo actual y duración, volumen y silencio.
+- La canción actual se resalta en la lista que se está reproduciendo, y el título de la pestaña muestra lo que suena.
+- Diseño adaptable (escritorio, tableta y móvil con menú lateral), tema claro u oscuro según el sistema, uso completo con teclado y respeto por «reducir movimiento».
 
 ## Tecnologías
 

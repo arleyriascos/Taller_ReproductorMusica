@@ -70,6 +70,7 @@ Taller_ReproductorMusica/
     ├── main.ts
     ├── styles.css
     ├── icons.ts
+    ├── format.ts
     ├── types.ts
     ├── Node.ts
     ├── LinkedList.ts
@@ -87,6 +88,7 @@ Taller_ReproductorMusica/
     ├── PlayerBarView.ts
     ├── StructurePanelView.ts
     ├── NotificationView.ts
+    ├── DialogView.ts
     ├── DoublyLinkedList.test.ts
     ├── TrackedLinkedList.test.ts
     ├── Playlist.test.ts
@@ -95,7 +97,9 @@ Taller_ReproductorMusica/
 ```
 
 `types.ts` holds only data shapes without behavior (`ListOperation`, `SongDetails`, `LoadedTrack`, `StoredState`).
-`icons.ts` holds only SVG string constants.
+`icons.ts` holds the SVG string constants and the only helpers allowed to turn them into elements (`createIcon`, `createIconButton`, `createLabeledButton`, `setButtonIcon`); this is the only place where `innerHTML` is used, and only with those constants.
+`format.ts` holds only pure formatting functions (`formatTime`, `formatElapsed`, `formatTotal`, `countLabel`).
+`DialogView.ts` builds the native `<dialog>` forms shared by `SidebarView` and `TrackListView`.
 No other folders. `public/` only if a static asset becomes necessary, and only after asking.
 
 ## 6. Dependency direction

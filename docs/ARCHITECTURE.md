@@ -8,8 +8,8 @@
 | Model | `Song`, `Playlist`, `PlaylistManager` | No (except `Song` creating object URLs) |
 | Browser services | `SongLoader`, `MusicPlayer`, `PlaylistStorage` | Browser APIs only, no page elements |
 | Coordination | `App` | Through views only |
-| Views | `SidebarView`, `TrackListView`, `PlayerBarView`, `StructurePanelView`, `NotificationView` | Yes |
-| Support | `types.ts`, `icons.ts`, `main.ts`, `styles.css` | — |
+| Views | `SidebarView`, `TrackListView`, `PlayerBarView`, `StructurePanelView`, `NotificationView`, `DialogView` | Yes |
+| Support | `types.ts`, `icons.ts`, `format.ts`, `main.ts`, `styles.css` | — |
 
 Dependency direction: Views → App → services and model → Playlist → TrackedLinkedList → DoublyLinkedList → Node. `Node.value` → `Song`.
 
@@ -89,26 +89,31 @@ Dependency direction: Views → App → services and model → Playlist → Trac
 - Creates the manager, loader, player (via `getInstance`), storage and views.
 - Receives every user action from the views, calls the model or player, saves state when the structure changed, then calls `render()`.
 - `render()` redraws the views from the current model. Progress updates only call `PlayerBarView.updateProgress` (no full redraw every tick).
+- Player state changes call `PlayerBarView.render`, `TrackListView.setPlayback` and `SidebarView.setPlayback` (highlight only, no list rebuild) and update `document.title`.
+- Tracks the player context itself (`#context: Playlist | null`): `MusicPlayer` keeps its context private, and the context only changes through `App` (`playFrom` sets it, `clearContext` clears it). The highlighted node is `context.current`, so only the context playlist shows a current row.
+- After a mutation of the context playlist (add or remove) calls `player.refresh()` so `hasNext` / `hasPrevious` and the loaded song stay correct. `removeSongEverywhere` refreshes whenever there is a context. Deleting the context playlist calls `clearContext()` first.
+- Name validation: the create and rename handlers return `PlaylistNameIssue | null` synchronously (from `checkName`); the view shows the Spanish message.
 - Translates thrown errors into Spanish messages through `NotificationView`.
 
 ### Views
-Each view receives its root element from `index.html` by id, builds content with DOM APIs, and exposes handler setters (for example `onPlaylistSelected(callback)`). Event delegation inside each view.
+Each view receives its root element from `index.html` by id, builds content with DOM APIs, and exposes handler setters (for example `onPlaylistSelected(callback)`). Event delegation inside each view. Views read the `Playlist` objects they render (name, `length`, `nodes()`) but never mutate the model or call the player.
 
-- `SidebarView`: brand, Library entry, playlists, "Nueva playlist", "Cargar canciones", "Cargar carpeta", mobile drawer.
-- `TrackListView`: header (name, count, total duration, playlist actions), rows, row menu, the "Agregar a…" dialog, the create/rename dialog, delete confirmations. Uses native `<dialog>`.
-- `PlayerBarView`: cover, title, artist, previous, play/pause, next, progress with seek, current time and duration, volume, mute, structure panel button.
+- `SidebarView`: brand, Library entry, playlists (with the playing context marked), "Nueva playlist" dialog, "Cargar canciones", "Cargar carpeta" (hidden file inputs, reset after each selection), mobile top bar menu button and drawer (Escape and backdrop close it).
+- `TrackListView`: header (name, count, total duration, playlist actions "Agregar canción", "Renombrar", "Eliminar playlist"), rows rendered by traversing `playlist.nodes()`, empty states. Each row keeps its `Node<Song>` in a `WeakMap`, so play and remove use the node directly (`playFrom(playlist, node)`, `removeNode(node)`). Owns the add-song dialog (two modes), rename, confirm delete playlist and confirm remove from Library.
+- `PlayerBarView`: cover, title, artist, previous, play/pause, next, progress with seek, current time and duration, volume, mute. (Structure panel button arrives with the panel.)
+- `DialogView`: builds one native `<dialog>` form (title, fields, inline error, "Cancelar" and confirm). The confirm handler returns an error message or `null` to close. Used by `SidebarView` and `TrackListView` so the dialog logic is not duplicated.
 - `StructurePanelView`: nodes of the playing list (or the visible one if nothing plays) with `head`, `tail`, `current`, `length`, links and the last operation. Minimized by default.
-- `NotificationView`: toasts and the "Reconecta tus archivos" banner.
+- `NotificationView`: toasts (about 4 s, close button, `role="status"`, errors `role="alert"`), the persistent "Cargando canciones…" notice, and later the "Reconecta tus archivos" banner.
 
 ## 3. Main flows
 
 1. Load: input files/folder → `SongLoader.load` → `PlaylistManager.addTracks` → save → render → toast with counts.
-2. Add at position: row menu "Agregar a…" → dialog (destination, Inicio/Final/Posición) → `Playlist.addAt…` → save → render.
+2. Add at position: row button "Agregar a…" (destination chosen) or header button "Agregar canción" (song chosen) → dialog (Inicio/Final/Posición) → `Playlist.addAt…` → refresh player if it is the context → save → render.
 3. Play: click row → `MusicPlayer.playFrom(playlist, node)`.
 4. Next/previous: player → `context.next()` / `previous()` → load source → play.
 5. Remove current: `Playlist.removeNode` handles `current` → if the playlist is the player context → `MusicPlayer.refresh()`.
 6. Remove from Library: `PlaylistManager.removeSongEverywhere` → refresh player if affected.
-7. Delete playlist: if it is the player context → `stop()` first.
+7. Delete playlist: if it is the player context → `clearContext()` first.
 8. Startup: `loadState` → `restore` (songs unavailable, lists rebuilt with `append`) → banner if any song is unavailable → user reconnects through the normal load flow.
 9. Duplicate: `duplicatePlaylist` → save → render.
 
