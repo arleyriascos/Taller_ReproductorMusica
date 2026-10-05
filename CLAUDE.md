@@ -71,6 +71,7 @@ Taller_ReproductorMusica/
     ├── styles.css
     ├── icons.ts
     ├── format.ts
+    ├── lyrics.ts
     ├── types.ts
     ├── Node.ts
     ├── LinkedList.ts
@@ -82,10 +83,12 @@ Taller_ReproductorMusica/
     ├── SongLoader.ts
     ├── MusicPlayer.ts
     ├── PlaylistStorage.ts
+    ├── LyricsService.ts
     ├── App.ts
     ├── SidebarView.ts
     ├── TrackListView.ts
     ├── PlayerBarView.ts
+    ├── NowPlayingView.ts
     ├── StructurePanelView.ts
     ├── NotificationView.ts
     ├── DialogView.ts
@@ -94,10 +97,14 @@ Taller_ReproductorMusica/
     ├── Playlist.test.ts
     ├── PlaylistManager.test.ts
     ├── SongLoader.test.ts
+    ├── LyricsService.test.ts
+    ├── lyrics.test.ts
     └── format.test.ts
 ```
 
-`types.ts` holds only data shapes without behavior (`ListOperation`, `SongDetails`, `LoadedTrack`, `StoredState`).
+`types.ts` holds only data shapes without behavior (`ListOperation`, `SongDetails`, `SongMedia`, `LoadedTrack`, `LyricLine`, `Lyrics`, `LyricsResult`, `StoredState`, …).
+`lyrics.ts` holds only pure lyrics functions (`parseLrc`, `toLyrics`, `instrumentalLyrics`, `sortByTime`, `cleanSearchTitle`, `activeLineIndex`); `lyrics.test.ts` tests them with invented text only.
+`LyricsService.ts` is the only code that calls the network, and only LRCLIB with title, artist, album and duration.
 `icons.ts` holds the SVG string constants and the only helpers allowed to turn them into elements (`createIcon`, `createIconButton`, `createLabeledButton`, `setButtonIcon`), plus `setCover`, the shared cover renderer (cover image or generic music icon) used by `PlayerBarView` and `TrackListView`; this is the only place where `innerHTML` is used, and only with those constants.
 `format.ts` holds only pure formatting functions (`formatTime`, `formatElapsed`, `formatTotal`, `countLabel`, `comparableText`); `format.test.ts` tests every one of them.
 `DialogView.ts` builds the native `<dialog>` forms shared by `SidebarView` and `TrackListView`.

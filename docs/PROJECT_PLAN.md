@@ -25,12 +25,17 @@ Individual work. Assigned 2026-09-28, due 2026-10-06.
 | Duplicates | Not allowed in the Library (by fingerprint); allowed in playlists (different nodes, same `Song`) |
 | Removing from a playlist | Removes only that node |
 | Removing from the Library | Removes the song from every playlist and releases its object URL |
-| End of list | Next disabled at `tail`, previous disabled at `head`; playback stops after the last song |
+| End of list | Next disabled at `tail`, previous disabled at `head`; playback stops after the last song (unless repeat is "toda la lista") |
+| Repeat | Three modes (off, all, one) decided by `MusicPlayer`; the list itself is never circular |
+| Search | Presentation only: hides rows of the visible list, never copies or reorders it |
 | Removing the current song | Move to next; if none, to previous; if none, player becomes empty |
 | Playback context | The list where the user pressed play; independent of the list being viewed |
 | Persistence | `localStorage` stores structure and metadata only; files are reconnected by fingerprint |
 | Patterns | Singleton (`MusicPlayer`), Decorator (`TrackedLinkedList`), Prototype (`Playlist.clone`) |
 | Structure panel | Exists, minimized by default, opened from the player bar |
+| Now playing view | Large cover and controls; "A continuación" built by following `next` from the current node, "Anteriores" by following `prev` |
+| Lyrics | Priority: paired `.lrc` file → lyrics embedded in the audio file → LRCLIB. Requested only when the "Letra" tab is open |
+| External APIs | LRCLIB (lyrics) receives only title, artist, album and duration; never audio or file data. Audius planned for "Explorar" |
 | App name | Musongs |
 | UI language | Spanish; code in English |
 | Theme | Follows the operating system (light/dark), coral accent tuned per mode, no manual toggle |
@@ -39,11 +44,13 @@ Individual work. Assigned 2026-09-28, due 2026-10-06.
 
 ## Scope
 
-Level 1 (mandatory): Library loading (files and folder), metadata, playlists CRUD, add at start/end/position, remove, play/pause, next/previous, seek, time, duration, volume, mute, auto-advance, current song with cover, responsive UI, empty and error states, tests, deployment.
+Level 1 (mandatory, done): Library loading (files and folder), metadata, playlists CRUD, add at start/end/position, remove, play/pause, next/previous, seek, time, duration, volume, mute, auto-advance, current song with cover, responsive UI, empty and error states, tests, deployment.
 
-Level 2 (after Level 1 works, in this order): structure panel with Decorator, persistence with reconnection, duplicate playlist with Prototype.
+Extras already built (phase 8A): repeat (off / all / one), search in the visible list, playlist play button, animated bars on the current row, Media Session (lock screen and media keys).
 
-Out of scope: external APIs, shuffle, search, favorites, history, visualizer, manual theme toggle, keyboard shortcuts. "Repeat" only if time remains.
+Next, in this order: now playing view with queue and lyrics; structure panel with Decorator; "Explorar" with Audius (Adapter); persistence with reconnection; duplicate playlist with Prototype, keyboard shortcuts and drag and drop; final tests and production verification.
+
+Out of scope: shuffle, favorites, listening history, visualizer, manual theme toggle, uploading or streaming the user's own audio.
 
 ## Phases
 
@@ -52,17 +59,19 @@ Out of scope: external APIs, shuffle, search, favorites, history, visualizer, ma
 | 0 | Analysis | Done |
 | 1 | Definition | Done |
 | 2 | Design | Done |
-| 3 | GitHub, VS Code, Git identity, Vite scaffold, Vercel connection | Next |
-| 4 | `Node`, `LinkedList`, `DoublyLinkedList` + tests | |
-| 5 | `Song`, `Playlist`, `PlaylistManager` + tests | |
-| 6 | `SongLoader`, `MusicPlayer` | |
-| 7 | Views and `App`: full Level 1 interface | |
-| 8 | Visual design and responsive polish | |
-| 9 | Level 2: `TrackedLinkedList` + structure panel | |
-| 10 | Level 2: persistence and reconnection | |
-| 11 | Level 2: duplicate playlist | |
-| 12 | Full manual test pass and review | |
-| 13 | Production verification on Vercel | |
+| 3 | GitHub, VS Code, Git identity, Vite scaffold, Vercel connection | Done |
+| 4 | `Node`, `LinkedList`, `DoublyLinkedList` + tests | Done |
+| 5 | `Song`, `Playlist`, `PlaylistManager` + tests | Done |
+| 6 | `SongLoader`, `MusicPlayer` | Done |
+| 7 | Views and `App`: full Level 1 interface | Done |
+| 8 | Visual design and responsive polish | Done |
+| 8A | Repeat, search, playlist play button, now-playing bars, Media Session | Done |
+| 9 | "Reproduciendo ahora" view: queue from `next`, "Anteriores" from `prev`, lyrics (`.lrc`, embedded, LRCLIB) | In review |
+| 10 | Structure panel with `TrackedLinkedList` (Decorator) | |
+| 11 | "Explorar" with Audius (Adapter) | |
+| 12 | Persistence and file reconnection | |
+| 13 | Duplicate playlist (Prototype), keyboard shortcuts, drag and drop | |
+| 14 | Final tests and production verification on Vercel | |
 
 Each implementation phase follows: prompt → agent implements and tests → report reviewed in chat → fixes → student commits and pushes.
 
@@ -74,7 +83,10 @@ Each implementation phase follows: prompt → agent implements and tests → rep
 - Implement local audio loading and music player
 - Build player interface
 - Improve visual design and responsive layout
+- Add repeat, search and media session
+- Add now playing view with queue and lyrics
 - Add data structure panel
+- Add Explorar with Audius
 - Add playlist persistence and file reconnection
 - Add playlist duplication
 - Fix issues found in testing

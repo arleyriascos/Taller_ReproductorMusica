@@ -26,6 +26,8 @@ const ICONS = {
   repeat: REPEAT_ARROWS,
   repeatOne: `${REPEAT_ARROWS}<path d="M10.8 10.6 12.3 9.8v4.6" />`,
   search: '<circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" />',
+  chevronUp: '<path d="m6 15 6-6 6 6" />',
+  chevronDown: '<path d="m6 9 6 6 6-6" />',
 } as const;
 
 export type IconName = keyof typeof ICONS;

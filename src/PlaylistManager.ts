@@ -97,14 +97,14 @@ export class PlaylistManager {
     const existing = this.findByFingerprint(track.details.fingerprint);
     if (existing === null) {
       const song = new Song(track.details);
-      song.attachFile(track.file, track.cover);
+      song.attachFile(track);
       this.library.addAtEnd(song);
       return "added";
     }
     if (existing.isAvailable()) {
       return "duplicated";
     }
-    existing.attachFile(track.file, track.cover);
+    existing.attachFile(track);
     return "reconnected";
   }
 

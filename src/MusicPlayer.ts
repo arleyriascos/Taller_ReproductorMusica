@@ -295,7 +295,7 @@ export class MusicPlayer {
     if (this.#mediaSession === null) {
       return;
     }
-    const artwork = song.coverUrl === null ? [] : [{ src: song.coverUrl }];
+    const artwork = song.coverUrl === null ? [] : [MusicPlayer.artworkOf(song.coverUrl, song.coverType)];
     this.#mediaSession.metadata = new MediaMetadata({ title: song.title, artist: song.artist, album: song.album, artwork });
   }
 
@@ -346,6 +346,10 @@ export class MusicPlayer {
 
   private notifyProgress(): void {
     this.#progressListener?.(this.#audio.currentTime, this.duration());
+  }
+
+  private static artworkOf(src: string, type: string | null): MediaImage {
+    return type === null ? { src } : { src, type };
   }
 
   private static clamp(value: number, min: number, max: number): number {

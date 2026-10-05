@@ -1,7 +1,9 @@
 import { countLabel } from "./format";
+import { LyricsService } from "./LyricsService";
 import { MusicPlayer } from "./MusicPlayer";
 import type { Node } from "./Node";
 import { NotificationView } from "./NotificationView";
+import { NowPlayingView } from "./NowPlayingView";
 import { PlayerBarView } from "./PlayerBarView";
 import type { Playlist } from "./Playlist";
 import { PlaylistManager } from "./PlaylistManager";
@@ -22,16 +24,26 @@ export class App {
   readonly #manager = new PlaylistManager();
   readonly #loader = new SongLoader();
   readonly #player = MusicPlayer.getInstance();
+  readonly #lyrics = new LyricsService();
   readonly #sidebar = new SidebarView(App.element("sidebar"), App.element("top-bar"), App.element("drawer-backdrop"));
   readonly #trackList = new TrackListView(App.element("main"));
   readonly #playerBar = new PlayerBarView(App.element("player-bar"));
+  readonly #nowPlaying = new NowPlayingView(App.element("now-playing"), App.element("app-shell"), [
+    App.element("top-bar"),
+    App.element("sidebar"),
+    App.element("drawer-backdrop"),
+    App.element("main"),
+  ]);
+  readonly #nowPlayingBar = new PlayerBarView(this.#nowPlaying.controlsSlot);
   readonly #notifications = new NotificationView(App.element("notifications"));
   #isLoading = false;
 
   start(): void {
     this.bindSidebar();
     this.bindTrackList();
-    this.bindPlayerBar();
+    this.bindPlayerBar(this.#playerBar);
+    this.bindPlayerBar(this.#nowPlayingBar);
+    this.bindNowPlaying();
     this.bindPlayer();
     this.render();
     this.showPlayerState(this.#player.getState());
@@ -55,8 +67,7 @@ export class App {
     list.onLoadRequested((kind) => this.#sidebar.openPicker(kind));
   }
 
-  private bindPlayerBar(): void {
-    const bar = this.#playerBar;
+  private bindPlayerBar(bar: PlayerBarView): void {
     const player = this.#player;
     bar.onPrevious(() => player.previous());
     bar.onTogglePlay(() => player.togglePlayPause());
@@ -65,11 +76,23 @@ export class App {
     bar.onToggleMute(() => player.toggleMute());
     bar.onSeek((seconds) => player.seek(seconds));
     bar.onVolumeChange((volume) => player.setVolume(volume));
+    bar.onToggleNowPlaying(() => this.toggleNowPlaying());
+  }
+
+  private bindNowPlaying(): void {
+    const view = this.#nowPlaying;
+    view.onPlayNode((node) => this.run(() => this.playInContext(node)));
+    view.onSeek((seconds) => this.#player.seek(seconds));
+    view.onLyricsRequested((song) => void this.loadLyrics(song));
+    view.onVisibilityChange((isOpen) => {
+      this.#playerBar.setNowPlayingOpen(isOpen);
+      this.#nowPlayingBar.setNowPlayingOpen(isOpen);
+    });
   }
 
   private bindPlayer(): void {
     this.#player.onStateChange((state) => this.showPlayerState(state));
-    this.#player.onProgress((currentTime, duration) => this.#playerBar.updateProgress(currentTime, duration));
+    this.#player.onProgress((currentTime, duration) => this.showProgress(currentTime, duration));
     this.#player.onError((code) => this.#notifications.show(PLAYER_ERRORS[code], "error"));
   }
 
@@ -87,15 +110,44 @@ export class App {
     const visible = this.#manager.visiblePlaylist;
     this.#sidebar.render({ library: this.#manager.library, playlists, visibleId: visible.id });
     this.#trackList.render({ playlist: visible, library: this.#manager.library, playlists, isLoading: this.#isLoading });
+    this.#nowPlaying.invalidateQueue();
     this.showPlayerState(this.#player.getState());
   }
 
   private showPlayerState(state: PlayerState): void {
     this.#playerBar.render(state);
+    this.#nowPlayingBar.render(state);
     const context = this.#player.context;
+    this.#nowPlaying.render(state, context);
     this.#trackList.setPlayback(context, state.isPlaying);
     this.#sidebar.setPlayback(context?.id ?? null, state.isPlaying);
     document.title = App.documentTitle(state);
+  }
+
+  private showProgress(currentTime: number, duration: number): void {
+    this.#playerBar.updateProgress(currentTime, duration);
+    this.#nowPlayingBar.updateProgress(currentTime, duration);
+    this.#nowPlaying.updateProgress(currentTime);
+  }
+
+  private toggleNowPlaying(): void {
+    if (this.#nowPlaying.isOpen) {
+      this.#nowPlaying.close();
+    } else {
+      this.#nowPlaying.open();
+    }
+  }
+
+  private playInContext(node: Node<Song>): void {
+    const context = this.#player.context;
+    if (context !== null) {
+      this.#player.playFrom(context, node);
+    }
+  }
+
+  private async loadLyrics(song: Song): Promise<void> {
+    const result = await this.#lyrics.getLyrics(song);
+    this.#nowPlaying.showLyrics(song, result);
   }
 
   private play(playlistId: string, node: Node<Song>): void {

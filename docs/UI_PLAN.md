@@ -13,6 +13,8 @@ Every element must have a function. Interface text in Spanish.
 | 768–1099px | Sidebar (224px) · main list · structure panel overlays from the right · player bar |
 | < 768px | Top bar with menu button; sidebar as drawer; structure panel as bottom sheet; compact player (cover, title, previous, play/pause, next; thin progress line on top) |
 
+"Reproduciendo ahora": from 768px it covers the sidebar and the main list (the player bar stays visible below); under 768px it is full screen with its own large controls and the compact player is hidden.
+
 ## 3. Regions
 
 Sidebar: "Musongs" brand · "Tu música" → Biblioteca · "Playlists" list (selected one highlighted) · "Nueva playlist" · "Cargar canciones" · "Cargar carpeta".
@@ -21,7 +23,9 @@ Main list: header with name, "N canciones · M min", actions ("Agregar canción"
 
 "Agregar canción" dialog: one dialog with two entry modes (see section 8), radio group Inicio / Final / Posición, number input `1..length+1` of the destination shown only for Posición, "Agregar" and "Cancelar".
 
-Player bar: cover, title, artist · previous, play/pause, next, repeat · current time, progress (seekable), duration · mute, volume · structure panel button.
+Player bar: cover, title, artist, "Abrir reproduciendo ahora" (chevron) · previous, play/pause, next, repeat · current time, progress (seekable), duration · mute, volume · structure panel button.
+
+"Reproduciendo ahora": header with close button, "Reproduciendo ahora" and "Reproduciendo desde «lista»" · large cover, title, artist, album · (mobile) large controls and progress · tabs "A continuación" and "Letra".
 
 Structure panel: title "Estructura" with the list name · vertical chain of nodes: each node shows the song title; labels `head`, `tail`, `current`; between nodes "next ↓ / ↑ prev"; `length` · box "Última operación" with the readable description · close button.
 
@@ -41,6 +45,12 @@ Structure panel: title "Estructura" with the list name · vertical chain of node
 | Nothing can be played | Play buttons (player bar and playlist header) neutral gray with a muted icon, never accent |
 | Search without results | "Sin resultados para «texto»" and "Limpiar búsqueda"; header shows "0 de M canciones" |
 | Playback error | Toast "No se pudo reproducir este archivo" |
+| Nothing loaded | "Abrir reproduciendo ahora" disabled; the view closes if the player becomes empty |
+| Queue at the end | "Es la última canción"; with repeat "toda la lista": "Luego vuelve al inicio" |
+| Lyrics loading | "Cargando letra…" |
+| Lyrics not found | "Letra no disponible para esta canción" |
+| Lyrics error (offline, LRCLIB busy) | "No se pudo cargar la letra" and "Reintentar" |
+| Instrumental | "Instrumental" |
 
 ## 5. Visual identity
 
@@ -108,3 +118,13 @@ Shape: 8px radius for controls, 12px for cards and panels. Icons: inline SVG, 20
 6. Repeat button after "Siguiente": "Repetir: desactivado" (muted icon), "Repetir: toda la lista" (accent icon with a dot), "Repetir: una canción" (accent icon with a "1" and a dot). It is visible in the compact mobile player too.
 7. Search box with a search icon, at the right of the play button (full remaining width on mobile). Matches title, artist and album ignoring case and accents with the "ñ" rule. Hidden when the list is empty, reset when switching playlists, Escape or "Limpiar búsqueda" clear it. Hidden rows keep their real position numbers.
 8. Media Session: lock screen and notification controls on Android Chrome, the media hub / hardware media keys on desktop Chrome and Edge, Control Center and lock screen on iOS / macOS Safari. Shows title, artist, album and cover.
+
+## 10. Interaction decisions (stage 7: "Reproduciendo ahora")
+
+1. Opening: the chevron button "Abrir reproduciendo ahora" in the player bar, or a click on the cover or title. While open, the button shows a downward chevron with "Cerrar reproduciendo ahora" and `aria-expanded="true"`. On phones the button lies transparently over the cover, so the title keeps its width and tapping the cover opens the view. Disabled when nothing is loaded.
+2. Closing: close button (downward chevron) or Escape. Focus moves to the close button on open and returns to the previously focused control on close. The covered regions are `inert` while the view is open.
+3. Layout: two columns from 768px (cover and data on the left, tabs on the right; the tab panel scrolls). Under 768px the view is full screen and scrolls as a column; the large controls are a second `PlayerBarView` (previous, play/pause, next, repeat, progress with times) and the compact player bar is hidden.
+4. Tabs: "A continuación" (default) and "Letra", with `tablist` / `tab` / `tabpanel`; arrows, Home and End move between tabs.
+5. "A continuación": up to 25 songs following `next` from the current node, each with cover, title, artist, duration; a click plays that node in the context playlist. Then "y N más" when longer. "Anteriores (N)" is a collapsed `<details>` with up to 10 songs following `prev`, nearest first. Notes: "Luego vuelve al inicio" with repeat "toda la lista"; otherwise "Es la última canción" when nothing follows.
+6. "Letra": requested only when the tab is open (and again when the song changes while it is open). Synced lyrics: lines 1.375rem bold, muted; the active line in `--color-accent`, centered in the lyrics box with smooth scroll (instant under reduced motion); clicking a line seeks to it; wheel, touch, scrollbar drag or scroll keys pause the automatic scroll for 4 s. Unsynced lyrics: static text. Source note under the lyrics: "Letra del archivo .lrc", "Letra incluida en el archivo" or "Letra de LRCLIB · solo se consultó el título y el artista".
+7. The view never rebuilds on progress: only the active lyric line and the progress control change.

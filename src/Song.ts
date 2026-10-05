@@ -1,4 +1,4 @@
-import type { SongDetails } from "./types";
+import type { Lyrics, SongDetails, SongMedia } from "./types";
 
 export class Song {
   readonly id: string;
@@ -9,6 +9,9 @@ export class Song {
   #duration: number;
   #coverUrl: string | null = null;
   #sourceUrl: string | null = null;
+  #coverType: string | null = null;
+  #lyricsFile: File | null = null;
+  #embeddedLyrics: Lyrics | null = null;
 
   constructor(details: SongDetails, id: string = crypto.randomUUID()) {
     this.id = id;
@@ -35,10 +38,25 @@ export class Song {
     return this.#sourceUrl;
   }
 
-  attachFile(file: File, cover: Blob | null): void {
+  get coverType(): string | null {
+    return this.#coverType;
+  }
+
+  get lyricsFile(): File | null {
+    return this.#lyricsFile;
+  }
+
+  get embeddedLyrics(): Lyrics | null {
+    return this.#embeddedLyrics;
+  }
+
+  attachFile(media: SongMedia): void {
     this.release();
-    this.#sourceUrl = URL.createObjectURL(file);
-    this.#coverUrl = cover === null ? null : URL.createObjectURL(cover);
+    this.#sourceUrl = URL.createObjectURL(media.file);
+    this.#coverUrl = media.cover === null ? null : URL.createObjectURL(media.cover);
+    this.#coverType = media.cover === null ? null : media.coverType;
+    this.#lyricsFile = media.lyricsFile;
+    this.#embeddedLyrics = media.embeddedLyrics;
   }
 
   updateDuration(seconds: number): void {
@@ -52,6 +70,9 @@ export class Song {
     Song.revoke(this.#coverUrl);
     this.#sourceUrl = null;
     this.#coverUrl = null;
+    this.#coverType = null;
+    this.#lyricsFile = null;
+    this.#embeddedLyrics = null;
   }
 
   isAvailable(): boolean {

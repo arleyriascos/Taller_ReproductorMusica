@@ -16,6 +16,8 @@ const REPEAT_BUTTONS: Record<RepeatMode, { icon: IconName; label: string }> = {
 };
 
 export class PlayerBarView {
+  readonly #now = Object.assign(document.createElement("div"), { className: "player-now" });
+  readonly #expand = createIconButton("chevronUp", "Abrir reproduciendo ahora", "icon-button player-expand");
   readonly #cover = Object.assign(document.createElement("div"), { className: "cover player-cover" });
   readonly #title = Object.assign(document.createElement("p"), { className: "player-title" });
   readonly #artist = Object.assign(document.createElement("p"), { className: "player-artist" });
@@ -35,6 +37,7 @@ export class PlayerBarView {
   #toggleHandler: ActionHandler = () => {};
   #nextHandler: ActionHandler = () => {};
   #repeatHandler: ActionHandler = () => {};
+  #nowPlayingHandler: ActionHandler = () => {};
   #muteHandler: ActionHandler = () => {};
   #seekHandler: ValueHandler = () => {};
   #volumeHandler: ValueHandler = () => {};
@@ -59,6 +62,15 @@ export class PlayerBarView {
 
   onCycleRepeat(handler: ActionHandler): void {
     this.#repeatHandler = handler;
+  }
+
+  onToggleNowPlaying(handler: ActionHandler): void {
+    this.#nowPlayingHandler = handler;
+  }
+
+  setNowPlayingOpen(isOpen: boolean): void {
+    setButtonIcon(this.#expand, isOpen ? "chevronDown" : "chevronUp", isOpen ? "Cerrar reproduciendo ahora" : "Abrir reproduciendo ahora");
+    this.#expand.setAttribute("aria-expanded", String(isOpen));
   }
 
   onToggleMute(handler: ActionHandler): void {
@@ -118,6 +130,8 @@ export class PlayerBarView {
   private renderControls(state: PlayerState): void {
     const hasSong = state.song !== null;
     this.#toggle.disabled = !hasSong;
+    this.#expand.disabled = !hasSong;
+    this.#now.classList.toggle("is-openable", hasSong);
     this.#seek.disabled = !hasSong;
     setButtonIcon(this.#toggle, state.isPlaying ? "pause" : "play", state.isPlaying ? "Pausar" : "Reproducir");
     PlayerBarView.renderStep(this.#previous, hasSong && state.hasPrevious, hasSong ? "Es la primera canción" : "Anterior", "Anterior");
@@ -140,11 +154,11 @@ export class PlayerBarView {
   }
 
   private createNowPlaying(): HTMLDivElement {
-    const container = Object.assign(document.createElement("div"), { className: "player-now" });
     const meta = Object.assign(document.createElement("div"), { className: "player-meta" });
     meta.append(this.#title, this.#artist);
-    container.append(this.#cover, meta);
-    return container;
+    this.#expand.setAttribute("aria-expanded", "false");
+    this.#now.append(this.#cover, meta, this.#expand);
+    return this.#now;
   }
 
   private createCenter(): HTMLDivElement {
@@ -168,10 +182,17 @@ export class PlayerBarView {
     this.#toggle.addEventListener("click", () => this.#toggleHandler());
     this.#next.addEventListener("click", () => this.#nextHandler());
     this.#repeat.addEventListener("click", () => this.#repeatHandler());
+    this.#now.addEventListener("click", () => this.requestNowPlaying());
     this.#mute.addEventListener("click", () => this.#muteHandler());
     this.#volume.addEventListener("input", () => this.#volumeHandler(this.#volume.valueAsNumber));
     this.#seek.addEventListener("input", () => this.previewSeek());
     this.#seek.addEventListener("change", () => this.commitSeek());
+  }
+
+  private requestNowPlaying(): void {
+    if (!this.#expand.disabled) {
+      this.#nowPlayingHandler();
+    }
   }
 
   private previewSeek(): void {

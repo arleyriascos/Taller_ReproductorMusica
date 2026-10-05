@@ -40,6 +40,7 @@ Every data-structure test ends by asserting the invariants of `DATA_STRUCTURE.md
 - `renamePlaylist` excludes the playlist itself from the duplicate check; rejects another playlist's name; cannot rename the Library.
 - `setVisible` rejects unknown ids; deleting the visible playlist makes the Library visible; deleting another keeps the visible one; the Library cannot be deleted.
 - `addTracks` (real `File` objects): new → `added` at the end of the Library; same fingerprint available → `duplicated`; same fingerprint unavailable → `reconnected` and available again.
+- `addTracks` passes `coverType`, `lyricsFile` and `embeddedLyrics` to the new song and again on reconnection; `release()` clears them.
 - `removeSongEverywhere` removes every node of the song from the Library and all playlists and makes the song unavailable.
 - `duplicatePlaylist`: names "(copia)", "(copia 2)", "(copia 3)"; respects 40 characters; the copy is independent; unknown id throws.
 
@@ -60,8 +61,24 @@ Runs in Node with real `File` objects and an injected playability probe (no audi
 - Fingerprint equals `Song.fingerprintOf(file)`.
 - Order preserved with more files than the concurrency limit (4).
 - A generated WAV with RIFF INFO tags yields its title, artist and duration.
+- `.lrc` pairing: a loose `.lrc` pairs with the audio of the same base name (case-insensitive); inside folders only within the same folder; unpaired `.lrc` files (and the `.lrc` of a rejected audio file) count as `ignored`; paired ones do not.
+- Embedded lyrics from a generated WAV with an ID3 `USLT` frame: LRC text → synced lines; plain text → unsynced lines; no tag → `null`.
 
-`MusicPlayer` is not unit-tested (it depends on the browser audio element); it is validated manually (M08–M14, M20, M21, M34, M37–M43, M46–M48).
+### lyrics.test.ts
+Fixtures use invented text only.
+- `parseLrc`: `[mm:ss]`, `[mm:ss.xx]`, `[mm:ss.xxx]`; several timestamps on one line, sorted; metadata tags ignored; positive and negative `[offset:]`, never below 0; empty timed lines kept, untimed lines dropped in synced text; word timestamps removed; Windows line endings; plain text → unsynced lines with inner spacers; blank text → no lines.
+- `toLyrics`: synced flag; `null` when every line is empty; `instrumentalLyrics`.
+- `activeLineIndex`: -1 before the first line; last line with time ≤ position (equal times choose the later one); -1 for unsynced or empty lines.
+- `cleanSearchTitle`: removes "(Official Video)", "[Official Music Video]", "- Official Video", "Official Video", "Lyric Video", "Lyrics", "Audio", "HD", "4K", "Remastered 2011", "2009 Remaster", several noises, extra spaces; keeps "(en vivo)" and a title that would become empty; removes a leading artist that matches ignoring case and accents; keeps a different leading part; splits "Artist - Title" when the artist is empty, but not a noise suffix.
+
+### LyricsService.test.ts
+Fake `fetch` returning real `Response` objects.
+- Priority: `.lrc` file first (no request), then embedded lyrics (no request), embedded when the `.lrc` is empty, LRCLIB only without local lyrics.
+- Query: `/api/get` with the cleaned title and artist, trimmed album and rounded duration; empty album and unknown duration omitted; artist split from the title when the song has none; no artist → straight to `/api/search` without `artist_name`; abort signal and no custom headers.
+- Results: 404 → search with the closest duration; results farther than 5 s rejected; first result with lyrics when the duration is unknown; synced preferred over plain; plain used when there is no synced text; instrumental; empty search → not-found; server error → error.
+- Cache: found and not-found cached per song; network error not cached (retry asks again); concurrent calls share one in-flight promise.
+
+`MusicPlayer` is not unit-tested (it depends on the browser audio element); it is validated manually (M08–M14, M20, M21, M34, M37–M43, M46–M48). `NowPlayingView` is validated manually (M49–M66).
 
 ## 2. Manual
 
@@ -115,6 +132,24 @@ Runs in Node with real `File` objects and an injected playability probe (no audi
 | M46 | Next / previous while a search hides rows | Follow the real list order, even to hidden songs |
 | M47 | Lock screen / notification (phone) or media keys (desktop) | Title, artist, album and cover shown; play, pause, next, previous and seek work |
 | M48 | Delete the playing playlist | Lock screen / media hub controls disappear |
+| M49 | Nothing loaded | "Abrir reproduciendo ahora" disabled |
+| M50 | Open with the chevron, the cover and the title | View opens over sidebar and list; focus on "Cerrar reproduciendo ahora"; sidebar and list not reachable with Tab |
+| M51 | Close with the button and with Escape | View closes; focus returns to the control that opened it |
+| M52 | "A continuación" in a list of 35 songs, playing the first | The next 25 songs in list order, then "y 9 más" |
+| M53 | Click a queue item | That node plays in the same context; the queue moves; "Anteriores (N)" lists the previous songs nearest first |
+| M54 | Last song, repeat off / toda la lista / una canción | "Es la última canción" / "Luego vuelve al inicio" / "Es la última canción" |
+| M55 | Remove a queued song (view closed), reopen | The song no longer appears in the queue |
+| M56 | Tabs with the keyboard | Arrows, Home and End move between "A continuación" and "Letra" |
+| M57 | Song with a paired `.lrc` (loose files and folder) | Synced lyrics, "Letra del archivo .lrc", no request to LRCLIB |
+| M58 | Song with embedded synced lyrics | Synced lyrics, "Letra incluida en el archivo" |
+| M59 | Song with embedded plain lyrics | Static text, "Letra incluida en el archivo" |
+| M60 | Well-known song without local lyrics | Lyrics from LRCLIB with "Letra de LRCLIB · solo se consultó el título y el artista"; the request contains only title, artist, album and duration |
+| M61 | Invented song | "Letra no disponible para esta canción" |
+| M62 | Offline (or LRCLIB answering 503), then "Reintentar" online | "No se pudo cargar la letra" + "Reintentar", then the real result |
+| M63 | Active line while playing; click a line | Highlighted line follows the audio and stays centered; the click seeks to that line |
+| M64 | Scroll the lyrics manually while playing | Automatic scroll pauses about 4 s, then resumes |
+| M65 | Unpaired `.lrc` in the selection | Counted as "ignorada" |
+| M66 | Phone width, light and dark | Full screen with large controls; compact player hidden while open and back after closing; no horizontal scroll |
 
 ## 3. Before every push
 

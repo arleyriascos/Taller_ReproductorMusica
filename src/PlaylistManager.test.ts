@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { PlaylistManager } from "./PlaylistManager";
 import { Song } from "./Song";
-import type { LoadedTrack } from "./types";
+import type { LoadedTrack, Lyrics } from "./types";
 
 function trackFor(name: string, lastModified = 1000): LoadedTrack {
   const file = new File(["audio"], name, { type: "audio/mpeg", lastModified });
@@ -9,6 +9,20 @@ function trackFor(name: string, lastModified = 1000): LoadedTrack {
     details: { title: name, artist: "Artista", album: "Album", duration: 60, fingerprint: Song.fingerprintOf(file) },
     file,
     cover: null,
+    coverType: null,
+    lyricsFile: null,
+    embeddedLyrics: null,
+  };
+}
+
+function trackWithExtras(name: string): LoadedTrack {
+  const lyrics: Lyrics = { synced: false, instrumental: false, lines: [{ time: null, text: "Linea" }], source: "embedded" };
+  return {
+    ...trackFor(name),
+    cover: new Blob(["image"], { type: "image/png" }),
+    coverType: "image/png",
+    lyricsFile: new File(["[00:01]Linea"], name.replace(/\.mp3$/, ".lrc")),
+    embeddedLyrics: lyrics,
   };
 }
 
@@ -184,6 +198,32 @@ describe("PlaylistManager addTracks", () => {
     expect(result).toEqual({ added: 0, reconnected: 1, duplicated: 0 });
     expect(song.isAvailable()).toBe(true);
     expect(manager.library.length).toBe(1);
+  });
+
+  it("passes the cover type and both lyrics sources to a new song", () => {
+    const manager = new PlaylistManager();
+    const track = trackWithExtras("a.mp3");
+    manager.addTracks([track]);
+    const [song] = librarySongs(manager);
+    expect(song.coverType).toBe("image/png");
+    expect(song.coverUrl).not.toBeNull();
+    expect(song.lyricsFile).toBe(track.lyricsFile);
+    expect(song.embeddedLyrics).toBe(track.embeddedLyrics);
+  });
+
+  it("passes the new fields again when reconnecting, and release clears them", () => {
+    const manager = new PlaylistManager();
+    manager.addTracks([trackFor("a.mp3")]);
+    const [song] = librarySongs(manager);
+    expect(song.lyricsFile).toBeNull();
+    song.release();
+    const track = trackWithExtras("a.mp3");
+    expect(manager.addTracks([track])).toEqual({ added: 0, reconnected: 1, duplicated: 0 });
+    expect(song.coverType).toBe("image/png");
+    expect(song.lyricsFile).toBe(track.lyricsFile);
+    expect(song.embeddedLyrics).toBe(track.embeddedLyrics);
+    song.release();
+    expect([song.coverType, song.lyricsFile, song.embeddedLyrics, song.coverUrl]).toEqual([null, null, null, null]);
   });
 
   it("findByFingerprint returns null when absent", () => {

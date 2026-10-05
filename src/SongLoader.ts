@@ -1,11 +1,21 @@
-import type { IAudioMetadata } from "music-metadata";
+import type { IAudioMetadata, ILyricsTag } from "music-metadata";
+import { parseLrc, sortByTime, toLyrics } from "./lyrics";
 import { Song } from "./Song";
-import type { LoadedTrack, LoadResult } from "./types";
+import type { LoadedTrack, LoadResult, LyricLine, Lyrics, RejectedFile } from "./types";
 
 type PlayabilityProbe = (mimeType: string) => boolean;
 type FileVerdict = "accepted" | "rejected" | "ignored";
 
+interface PartitionedInput {
+  audio: File[];
+  lyrics: Map<string, File>;
+  rejected: RejectedFile[];
+  ignored: number;
+}
+
 const CONCURRENCY = 4;
+const LYRICS_EXTENSION = "lrc";
+const MILLISECOND_TIMESTAMPS = 2;
 
 const MIME_BY_EXTENSION: ReadonlyMap<string, string> = new Map([
   ["mp3", "audio/mpeg"],
@@ -28,20 +38,47 @@ export class SongLoader {
   }
 
   async load(files: Iterable<File>): Promise<LoadResult> {
-    const result: LoadResult = { tracks: [], rejected: [], ignored: 0 };
-    const accepted: File[] = [];
+    const input = this.partition(files);
+    const pairs = input.audio.map((file) => input.lyrics.get(SongLoader.pairKey(file)) ?? null);
+    const paired = new Set(pairs);
+    const unpaired = [...input.lyrics.values()].filter((file) => !paired.has(file)).length;
+    const tracks = await SongLoader.readAll(input.audio, pairs);
+    return { tracks, rejected: input.rejected, ignored: input.ignored + unpaired };
+  }
+
+  private partition(files: Iterable<File>): PartitionedInput {
+    const input: PartitionedInput = { audio: [], lyrics: new Map(), rejected: [], ignored: 0 };
     for (const file of SongLoader.sorted(files)) {
+      if (SongLoader.extensionOf(file.name) === LYRICS_EXTENSION) {
+        SongLoader.addLyricsFile(input, file);
+        continue;
+      }
       const verdict = this.classify(file);
       if (verdict === "accepted") {
-        accepted.push(file);
+        input.audio.push(file);
       } else if (verdict === "rejected") {
-        result.rejected.push({ name: file.name, reason: "unsupported-format" });
+        input.rejected.push({ name: file.name, reason: "unsupported-format" });
       } else {
-        result.ignored++;
+        input.ignored++;
       }
     }
-    result.tracks = await SongLoader.readAll(accepted);
-    return result;
+    return input;
+  }
+
+  private static addLyricsFile(input: PartitionedInput, file: File): void {
+    const key = SongLoader.pairKey(file);
+    if (input.lyrics.has(key)) {
+      input.ignored++;
+    } else {
+      input.lyrics.set(key, file);
+    }
+  }
+
+  private static pairKey(file: File): string {
+    const path = file.webkitRelativePath || file.name;
+    const slash = path.lastIndexOf("/");
+    const folder = slash === -1 ? "" : path.slice(0, slash + 1);
+    return `${folder}${SongLoader.baseName(file.name)}`.toLowerCase();
   }
 
   private classify(file: File): FileVerdict {
@@ -53,19 +90,19 @@ export class SongLoader {
     return mimeType !== undefined && this.#canPlay(mimeType) ? "accepted" : "rejected";
   }
 
-  private static async readAll(files: File[]): Promise<LoadedTrack[]> {
+  private static async readAll(files: File[], lyricsFiles: (File | null)[]): Promise<LoadedTrack[]> {
     const tracks = new Array<LoadedTrack>(files.length);
     const pending = files.entries();
     const worker = async (): Promise<void> => {
       for (const [index, file] of pending) {
-        tracks[index] = await SongLoader.read(file);
+        tracks[index] = await SongLoader.read(file, lyricsFiles[index] ?? null);
       }
     };
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, files.length) }, worker));
     return tracks;
   }
 
-  private static async read(file: File): Promise<LoadedTrack> {
+  private static async read(file: File, lyricsFile: File | null): Promise<LoadedTrack> {
     const metadata = await SongLoader.parse(file);
     return {
       details: {
@@ -76,7 +113,9 @@ export class SongLoader {
         fingerprint: Song.fingerprintOf(file),
       },
       file,
-      cover: SongLoader.coverOf(metadata),
+      ...SongLoader.coverOf(metadata),
+      lyricsFile,
+      embeddedLyrics: SongLoader.embeddedLyricsOf(metadata),
     };
   }
 
@@ -89,12 +128,39 @@ export class SongLoader {
     }
   }
 
-  private static coverOf(metadata: IAudioMetadata | null): Blob | null {
+  private static coverOf(metadata: IAudioMetadata | null): Pick<LoadedTrack, "cover" | "coverType"> {
     const picture = metadata?.common.picture?.[0];
     if (picture === undefined) {
-      return null;
+      return { cover: null, coverType: null };
     }
-    return new Blob([new Uint8Array(picture.data)], { type: picture.format });
+    const coverType = SongLoader.imageType(picture.format);
+    return { cover: new Blob([new Uint8Array(picture.data)], { type: coverType }), coverType };
+  }
+
+  private static imageType(format: string): string {
+    const type = format.trim().toLowerCase();
+    if (type.includes("/")) {
+      return type;
+    }
+    return `image/${type === "jpg" ? "jpeg" : type}`;
+  }
+
+  private static embeddedLyricsOf(metadata: IAudioMetadata | null): Lyrics | null {
+    for (const tag of metadata?.common.lyrics ?? []) {
+      const lyrics = toLyrics(SongLoader.lyricLinesOf(tag), "embedded");
+      if (lyrics !== null) {
+        return lyrics;
+      }
+    }
+    return null;
+  }
+
+  private static lyricLinesOf(tag: ILyricsTag): LyricLine[] {
+    const timed = tag.timeStampFormat === MILLISECOND_TIMESTAMPS ? tag.syncText : [];
+    if (timed.length > 0 && timed.every((line) => line.timestamp !== undefined)) {
+      return sortByTime(timed.map((line) => ({ time: (line.timestamp ?? 0) / 1000, text: line.text.trim() })));
+    }
+    return parseLrc(tag.text ?? "");
   }
 
   private static validDuration(seconds: number | undefined): number {

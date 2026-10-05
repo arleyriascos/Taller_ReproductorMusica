@@ -234,7 +234,7 @@ export class SidebarView {
     input.tabIndex = -1;
     if (kind === "files") {
       input.multiple = true;
-      input.accept = "audio/*";
+      input.accept = "audio/*,.lrc";
     } else {
       input.webkitdirectory = true;
     }

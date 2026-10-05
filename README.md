@@ -23,6 +23,8 @@ Despliegue: https://musongs.vercel.app/
 - **Botón para reproducir una playlist** (también la Biblioteca): empieza desde la primera canción; si esa lista ya está sonando, pausa y reanuda.
 - **Repetir**: desactivado, toda la lista (al llegar al final vuelve a la primera canción, y «anterior» en la primera va a la última) o una canción (se repite al terminar). La lista no se vuelve circular: el reproductor decide cuándo saltar al otro extremo.
 - **Buscar en la lista visible** por título, artista o álbum, sin importar mayúsculas ni tildes (la «ñ» cuenta como letra distinta). La búsqueda solo oculta filas: no cambia la lista ni el orden de «siguiente» y «anterior».
+- **Reproduciendo ahora**: una vista con la carátula grande y los controles. La pestaña «A continuación» muestra las canciones que siguen recorriendo los enlaces `next` desde el nodo actual, y «Anteriores» las que quedaron atrás recorriendo los enlaces `prev`; al tocar una se reproduce desde ahí.
+- **Letras sincronizadas**: en la pestaña «Letra» la línea actual se resalta y se puede tocar una línea para saltar a ese momento. La letra se toma, en este orden, de un archivo `.lrc` con el mismo nombre que la canción y en la misma carpeta, de la letra incluida en el propio archivo de audio o, si no hay ninguna, de [LRCLIB](https://lrclib.net). A LRCLIB solo se envían el título, el artista, el álbum y la duración, y solo cuando abres la pestaña «Letra»; nunca se envía el audio.
 - **Controles del sistema** (Media Session): en el celular la pantalla de bloqueo y la notificación muestran la canción con su carátula y permiten pausar, cambiar de canción y adelantar; en el computador funcionan las teclas multimedia.
 - La canción actual se resalta en la lista que se está reproduciendo con unas barras animadas, y el título de la pestaña muestra lo que suena.
 - Diseño adaptable (escritorio, tableta y móvil con menú lateral), tema claro u oscuro según el sistema, uso completo con teclado y respeto por «reducir movimiento».
@@ -53,6 +55,8 @@ npm run build
 ## Privacidad
 
 Las canciones se seleccionarán desde el computador de cada usuario y se reproducirán directamente en el navegador. Nunca se suben a ningún servidor, y el repositorio ignora los archivos de audio para que no se publiquen por error.
+
+La única consulta externa es la búsqueda de letras en LRCLIB, que recibe el título, el artista, el álbum y la duración de la canción cuando no hay letra local y abres la pestaña «Letra».
 
 ## Documentación y forma de trabajo
 

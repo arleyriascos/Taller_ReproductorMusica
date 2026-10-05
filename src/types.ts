@@ -19,10 +19,32 @@ export interface SongDetails {
   fingerprint: string;
 }
 
-export interface LoadedTrack {
-  details: SongDetails;
+export interface LyricLine {
+  time: number | null;
+  text: string;
+}
+
+export type LyricsSource = "file" | "embedded" | "lrclib";
+
+export interface Lyrics {
+  synced: boolean;
+  instrumental: boolean;
+  lines: LyricLine[];
+  source: LyricsSource;
+}
+
+export type LyricsResult = { status: "found"; lyrics: Lyrics } | { status: "not-found" } | { status: "error" };
+
+export interface SongMedia {
   file: File;
   cover: Blob | null;
+  coverType: string | null;
+  lyricsFile: File | null;
+  embeddedLyrics: Lyrics | null;
+}
+
+export interface LoadedTrack extends SongMedia {
+  details: SongDetails;
 }
 
 export type PlaylistNameIssue = "empty" | "too-long" | "duplicate";
