@@ -28,6 +28,7 @@ const ICONS = {
   search: '<circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" />',
   chevronUp: '<path d="m6 15 6-6 6 6" />',
   chevronDown: '<path d="m6 9 6 6 6-6" />',
+  structure: '<rect x="3" y="3" width="8" height="6" rx="1.5" /><rect x="13" y="15" width="8" height="6" rx="1.5" /><path d="M7 9v7a2 2 0 0 0 2 2h4" /><path d="M17 15V8a2 2 0 0 0-2-2h-4" />',
 } as const;
 
 export type IconName = keyof typeof ICONS;

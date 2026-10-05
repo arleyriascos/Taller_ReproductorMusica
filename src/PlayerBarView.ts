@@ -30,6 +30,7 @@ export class PlayerBarView {
   readonly #seek = PlayerBarView.createRange("Progreso de la canción", "player-seek");
   readonly #mute = createIconButton("volume", "Silenciar", "icon-button player-mute");
   readonly #volume = PlayerBarView.createRange("Volumen", "player-volume-range");
+  readonly #structure = createIconButton("structure", "Mostrar estructura", "icon-button player-structure");
   #isSeeking = false;
   #coverUrl: string | null | undefined;
   #repeatMode: RepeatMode | null = null;
@@ -38,13 +39,15 @@ export class PlayerBarView {
   #nextHandler: ActionHandler = () => {};
   #repeatHandler: ActionHandler = () => {};
   #nowPlayingHandler: ActionHandler = () => {};
+  #structureHandler: ActionHandler = () => {};
   #muteHandler: ActionHandler = () => {};
   #seekHandler: ValueHandler = () => {};
   #volumeHandler: ValueHandler = () => {};
 
   constructor(root: HTMLElement) {
     this.#volume.max = "1";
-    root.append(this.createNowPlaying(), this.createCenter(), this.createVolume());
+    this.#structure.setAttribute("aria-pressed", "false");
+    root.append(this.createNowPlaying(), this.createCenter(), this.createExtras());
     this.registerEvents();
   }
 
@@ -71,6 +74,15 @@ export class PlayerBarView {
   setNowPlayingOpen(isOpen: boolean): void {
     setButtonIcon(this.#expand, isOpen ? "chevronDown" : "chevronUp", isOpen ? "Cerrar reproduciendo ahora" : "Abrir reproduciendo ahora");
     this.#expand.setAttribute("aria-expanded", String(isOpen));
+  }
+
+  onToggleStructure(handler: ActionHandler): void {
+    this.#structureHandler = handler;
+  }
+
+  setStructureOpen(isOpen: boolean): void {
+    setButtonIcon(this.#structure, "structure", isOpen ? "Ocultar estructura" : "Mostrar estructura");
+    this.#structure.setAttribute("aria-pressed", String(isOpen));
   }
 
   onToggleMute(handler: ActionHandler): void {
@@ -171,10 +183,12 @@ export class PlayerBarView {
     return center;
   }
 
-  private createVolume(): HTMLDivElement {
-    const container = Object.assign(document.createElement("div"), { className: "player-volume" });
-    container.append(this.#mute, this.#volume);
-    return container;
+  private createExtras(): HTMLDivElement {
+    const extras = Object.assign(document.createElement("div"), { className: "player-extras" });
+    const volume = Object.assign(document.createElement("div"), { className: "player-volume" });
+    volume.append(this.#mute, this.#volume);
+    extras.append(this.#structure, volume);
+    return extras;
   }
 
   private registerEvents(): void {
@@ -183,6 +197,7 @@ export class PlayerBarView {
     this.#next.addEventListener("click", () => this.#nextHandler());
     this.#repeat.addEventListener("click", () => this.#repeatHandler());
     this.#now.addEventListener("click", () => this.requestNowPlaying());
+    this.#structure.addEventListener("click", () => this.#structureHandler());
     this.#mute.addEventListener("click", () => this.#muteHandler());
     this.#volume.addEventListener("input", () => this.#volumeHandler(this.#volume.valueAsNumber));
     this.#seek.addEventListener("input", () => this.previewSeek());

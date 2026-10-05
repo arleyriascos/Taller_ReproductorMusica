@@ -2,18 +2,20 @@
 
 ## 1. Concept
 
-Streaming-style player with an optional, minimized "Estructura" panel that shows the doubly linked list working live.
+Streaming-style player with an "Estructura" panel that shows the doubly linked list working live. On desktop the panel is visible by default (it is the main academic showcase); on tablets and phones it opens on demand.
 Every element must have a function. Interface text in Spanish.
 
 ## 2. Layout
 
 | Width | Layout |
 |---|---|
-| ≥ 1100px | Sidebar (240px) · main list · structure panel (320px, only when open) · player bar fixed at the bottom |
-| 768–1099px | Sidebar (224px) · main list · structure panel overlays from the right · player bar |
-| < 768px | Top bar with menu button; sidebar as drawer; structure panel as bottom sheet; compact player (cover, title, previous, play/pause, next; thin progress line on top) |
+| ≥ 1100px | Sidebar (240px) · main list · structure panel (right column, `clamp(300px, 24vw, 340px)`, **visible by default**; hiding it gives the space back to the list) · player bar fixed at the bottom |
+| 768–1099px | Sidebar (224px) · main list · structure panel hidden by default, opens as an overlay from the right (up to 360px) above the player bar, with a backdrop · player bar |
+| < 768px | Top bar with menu button; sidebar as drawer; structure panel hidden by default, opens as a bottom sheet (max 75% of the height) with a handle and close button, above the compact player; compact player (cover, title, previous, play/pause, next, repeat, structure toggle; thin progress line on top) |
 
-"Reproduciendo ahora": from 768px it covers the sidebar and the main list (the player bar stays visible below); under 768px it is full screen with its own large controls and the compact player is hidden.
+"Reproduciendo ahora": from 768px it covers the sidebar, the main list and the structure panel (the player bar stays visible below); under 768px it is full screen with its own large controls and the compact player is hidden.
+
+The track list hides its album column when the list itself is narrower than 720px (container query), so the open panel never squeezes the columns.
 
 ## 3. Regions
 
@@ -27,7 +29,7 @@ Player bar: cover, title, artist, "Abrir reproduciendo ahora" (chevron) · previ
 
 "Reproduciendo ahora": header with close button, "Reproduciendo ahora" and "Reproduciendo desde «lista»" · large cover, title, artist, album · (mobile) large controls and progress · tabs "A continuación" and "Letra".
 
-Structure panel: title "Estructura" with the list name · vertical chain of nodes: each node shows the song title; labels `head`, `tail`, `current`; between nodes "next ↓ / ↑ prev"; `length` · box "Última operación" with the readable description · close button.
+Structure panel (visible playlist): title "Estructura", subtitle "Lista doble de «nombre»", close button "Ocultar estructura" · summary `length = N · head = … · tail = …` · box "Última operación" (code form and Spanish sentence) · vertical chain of node cards (`[i]`, title, `prev:` / `next:`, tags `head`, `tail`, `current`) with "next ↓ / ↑ prev" between cards and "… N nodos antes / después" at the edges of the window · "Historial (últimas 6)" collapsed at the bottom. See section 11.
 
 ## 4. States
 
@@ -80,7 +82,7 @@ Shape: 8px radius for controls, 12px for cards and panels. Icons: inline SVG, 20
 
 - Row hover background, pressed state on buttons.
 - Current row and current node highlighted with the accent.
-- Links changed by the last operation flash once (about 600ms).
+- Nodes and links changed by a new operation flash once (800ms); under reduced motion they keep a static highlight until the next change.
 - Panel and drawer slide in.
 - All motion disabled under `prefers-reduced-motion: reduce`.
 
@@ -128,3 +130,15 @@ Shape: 8px radius for controls, 12px for cards and panels. Icons: inline SVG, 20
 5. "A continuación": up to 25 songs following `next` from the current node, each with cover, title, artist, duration; a click plays that node in the context playlist. Then "y N más" when longer. "Anteriores (N)" is a collapsed `<details>` with up to 10 songs following `prev`, nearest first. Notes: "Luego vuelve al inicio" with repeat "toda la lista"; otherwise "Es la última canción" when nothing follows.
 6. "Letra": requested only when the tab is open (and again when the song changes while it is open). Synced lyrics: lines 1.375rem bold, muted; the active line in `--color-accent`, centered in the lyrics box with smooth scroll (instant under reduced motion); clicking a line seeks to it; wheel, touch, scrollbar drag or scroll keys pause the automatic scroll for 4 s. Unsynced lyrics: static text. Source note under the lyrics: "Letra del archivo .lrc", "Letra incluida en el archivo" or "Letra de LRCLIB · solo se consultó el título y el artista".
 7. The view never rebuilds on progress: only the active lyric line and the progress control change.
+
+## 11. Interaction decisions (stage 8: structure panel)
+
+1. Decision change: the panel is no longer minimized by default. From 1100px it is a visible right column; hiding it gives the space back to the list. Under 1100px it starts hidden. Crossing 1100px resets it to that width's default; remembering the preference arrives with persistence.
+2. Toggle: icon button with linked nodes in the player bar (before mute on desktop and tablet, after repeat on phones), `aria-pressed`, labels "Mostrar estructura" / "Ocultar estructura", accent color while pressed. Pressed while "Reproduciendo ahora" is open, it closes that view and shows the panel.
+3. Tablet (768–1099px): overlay from the right above the player bar with a backdrop; Escape, the backdrop and the close button close it; focus moves to the close button on open and back to the toggle on close. Phone (< 768px): bottom sheet above the compact player, max 75% of the height, handle and close button, same closing rules. The player stays usable below both, so next / previous can be watched live.
+4. Content follows the visible playlist. `current` appears only when that playlist is the player context; its `prev` and `next` neighbors get a dashed accent border. A click on a card plays that node.
+5. Long lists: at most 15 nodes before and 15 after the focus (`current` when this playlist is the context, otherwise `head`), with "… N nodos antes" / "… N nodos después". The focus card is kept in view (smooth scroll, instant under reduced motion).
+6. "Última operación": code form with the 0-based index (`insert(1)` for "Posición 2", matching the `[1]` card) and a sentence: "Se agregó «X» al final (tail)", "Se agregó «X» al inicio (head)", "Se insertó «X» entre «A» y «B»", "Se agregó «X» en la lista vacía: ahora es head y tail", "Se quitó «X» del inicio: «B» es el nuevo head", "Se quitó «X» del final: «A» es el nuevo tail", "Se quitó un nodo: «A» y «B» ahora se enlazan", "Se quitó «X», el único nodo: la lista quedó vacía", "Se vaciaron todos los nodos: head y tail ahora son null". With no operations: "Todavía no hay operaciones en esta lista".
+7. Flash: only for a new operation on the playlist already shown, never on a playlist switch, playback change or progress tick, and never while the panel is closed. The sentence is announced through an `aria-live="polite"` region.
+8. Fonts: JetBrains Mono for summary, code and nodes; Manrope for the title, labels and sentences. Colors only from tokens (`--color-flash` and `--color-neighbor` are mixes of the accent).
+9. While the panel is open on desktop, toasts move to the left of it so they do not cover the chain.

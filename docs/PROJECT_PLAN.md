@@ -32,7 +32,8 @@ Individual work. Assigned 2026-09-28, due 2026-10-06.
 | Playback context | The list where the user pressed play; independent of the list being viewed |
 | Persistence | `localStorage` stores structure and metadata only; files are reconnected by fingerprint |
 | Patterns | Singleton (`MusicPlayer`), Decorator (`TrackedLinkedList`), Prototype (`Playlist.clone`) |
-| Structure panel | Exists, minimized by default, opened from the player bar |
+| Structure panel | Shows the visible playlist. Changed in stage 8: visible by default on desktop (≥ 1100px) as a right column, because it is the main academic showcase; hidden by default on tablets (overlay) and phones (bottom sheet). Toggle in the player bar. The open/closed preference is not remembered until persistence |
+| Operation data for the panel | `ListOperation<T>` (Decorator) records `previousNode`, `node` and `nextNode` besides the labels, so the panel knows which nodes changed without touching `DoublyLinkedList` |
 | Now playing view | Large cover and controls; "A continuación" built by following `next` from the current node, "Anteriores" by following `prev` |
 | Lyrics | Priority: paired `.lrc` file → lyrics embedded in the audio file → LRCLIB. Requested only when the "Letra" tab is open |
 | External APIs | LRCLIB (lyrics) receives only title, artist, album and duration; never audio or file data. Audius planned for "Explorar" |
@@ -66,8 +67,8 @@ Out of scope: shuffle, favorites, listening history, visualizer, manual theme to
 | 7 | Views and `App`: full Level 1 interface | Done |
 | 8 | Visual design and responsive polish | Done |
 | 8A | Repeat, search, playlist play button, now-playing bars, Media Session | Done |
-| 9 | "Reproduciendo ahora" view: queue from `next`, "Anteriores" from `prev`, lyrics (`.lrc`, embedded, LRCLIB) | In review |
-| 10 | Structure panel with `TrackedLinkedList` (Decorator) | |
+| 9 | "Reproduciendo ahora" view: queue from `next`, "Anteriores" from `prev`, lyrics (`.lrc`, embedded, LRCLIB) | Done |
+| 10 | Structure panel with `TrackedLinkedList` (Decorator): live chain of the visible playlist, window of ±15 nodes, last operation with flash, history | In review |
 | 11 | "Explorar" with Audius (Adapter) | |
 | 12 | Persistence and file reconnection | |
 | 13 | Duplicate playlist (Prototype), keyboard shortcuts, drag and drop | |

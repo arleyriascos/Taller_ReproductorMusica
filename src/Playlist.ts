@@ -30,11 +30,11 @@ export class Playlist {
     return this.#songs.length;
   }
 
-  get history(): readonly ListOperation[] {
+  get history(): readonly ListOperation<Song>[] {
     return this.#songs.history;
   }
 
-  get lastOperation(): ListOperation | null {
+  get lastOperation(): ListOperation<Song> | null {
     return this.#songs.lastOperation;
   }
 

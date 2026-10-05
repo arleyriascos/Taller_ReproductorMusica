@@ -8,7 +8,7 @@ Proyecto del **Taller Reproductor de Música** del curso **Estructuras de Datos*
 
 ## Estado
 
-En desarrollo. La interfaz principal (nivel 1) ya funciona; el panel de estructura, la persistencia y la duplicación de playlists llegarán en las siguientes etapas.
+En desarrollo. La interfaz principal (nivel 1) y el panel de estructura ya funcionan; la persistencia y la duplicación de playlists llegarán en las siguientes etapas.
 
 Despliegue: https://musongs.vercel.app/
 
@@ -25,6 +25,7 @@ Despliegue: https://musongs.vercel.app/
 - **Buscar en la lista visible** por título, artista o álbum, sin importar mayúsculas ni tildes (la «ñ» cuenta como letra distinta). La búsqueda solo oculta filas: no cambia la lista ni el orden de «siguiente» y «anterior».
 - **Reproduciendo ahora**: una vista con la carátula grande y los controles. La pestaña «A continuación» muestra las canciones que siguen recorriendo los enlaces `next` desde el nodo actual, y «Anteriores» las que quedaron atrás recorriendo los enlaces `prev`; al tocar una se reproduce desde ahí.
 - **Letras sincronizadas**: en la pestaña «Letra» la línea actual se resalta y se puede tocar una línea para saltar a ese momento. La letra se toma, en este orden, de un archivo `.lrc` con el mismo nombre que la canción y en la misma carpeta, de la letra incluida en el propio archivo de audio o, si no hay ninguna, de [LRCLIB](https://lrclib.net). A LRCLIB solo se envían el título, el artista, el álbum y la duración, y solo cuando abres la pestaña «Letra»; nunca se envía el audio.
+- **Panel «Estructura»**: muestra en vivo la lista doblemente enlazada de la playlist que estás viendo. Cada canción aparece como un nodo con su índice, sus enlaces `prev` y `next` y las marcas `head`, `tail` y `current`; el resumen indica `length`, `head` y `tail`. Al agregar o quitar una canción, el recuadro «Última operación» la muestra como código (`append()`, `prepend()`, `insert(i)`, `removeNode()`…) y con una frase como «Se insertó «Brisa» entre «Aurora» y «Cometa»», y los nodos cuyos enlaces cambiaron se iluminan un instante. Con «siguiente» y «anterior» se ve cómo `current` avanza por los enlaces. En listas largas se muestran 15 nodos antes y 15 después del actual. Tocar un nodo lo reproduce. En el computador está visible a la derecha; en tableta y celular se abre con el botón de estructura del reproductor.
 - **Controles del sistema** (Media Session): en el celular la pantalla de bloqueo y la notificación muestran la canción con su carátula y permiten pausar, cambiar de canción y adelantar; en el computador funcionan las teclas multimedia.
 - La canción actual se resalta en la lista que se está reproduciendo con unas barras animadas, y el título de la pestaña muestra lo que suena.
 - Diseño adaptable (escritorio, tableta y móvil con menú lateral), tema claro u oscuro según el sistema, uso completo con teclado y respeto por «reducir movimiento».

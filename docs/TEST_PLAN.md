@@ -21,6 +21,7 @@ Every data-structure test ends by asserting the invariants of `DATA_STRUCTURE.md
 ### TrackedLinkedList.test.ts
 - Delegates results and `head`/`tail`/`length` to the inner list.
 - Records type, index, value label and neighbor labels for each mutation.
+- Records the node references read from the real links: `append`, `prepend` and `insert` in the middle store `previousNode`, the inserted `node` and `nextNode`; `remove` and `removeNode` (head, middle, tail, only node) store the two neighbors that became linked and `node: null`; `clear` stores three `null`. The history keeps the references of older operations.
 - Failing operation records nothing.
 - History limited to 20 entries.
 
@@ -78,7 +79,7 @@ Fake `fetch` returning real `Response` objects.
 - Results: 404 → search with the closest duration; results farther than 5 s rejected; first result with lyrics when the duration is unknown; synced preferred over plain; plain used when there is no synced text; instrumental; empty search → not-found; server error → error.
 - Cache: found and not-found cached per song; network error not cached (retry asks again); concurrent calls share one in-flight promise.
 
-`MusicPlayer` is not unit-tested (it depends on the browser audio element); it is validated manually (M08–M14, M20, M21, M34, M37–M43, M46–M48). `NowPlayingView` is validated manually (M49–M66).
+`MusicPlayer` is not unit-tested (it depends on the browser audio element); it is validated manually (M08–M14, M20, M21, M34, M37–M43, M46–M48). `NowPlayingView` is validated manually (M49–M66). `StructurePanelView` is validated manually (M25, M26, M67–M86).
 
 ## 2. Manual
 
@@ -108,7 +109,7 @@ Fake `fetch` returning real `Response` objects.
 | M22 | Remove song from Library | Disappears from every playlist |
 | M23 | Switch visible playlist while playing | Playback continues in its own list |
 | M24 | Delete the playing playlist | Playback stops |
-| M25 | Structure panel open/close | Minimized by default; state remembered |
+| M25 | Structure panel open/close | Visible by default from 1100px, hidden below; toggle and close button work (state remembered only after persistence) |
 | M26 | Panel after insert/remove | Nodes, labels and last operation correct |
 | M27 | Reload page | Playlists kept, songs unavailable, banner shown |
 | M28 | Reconnect folder | Matching songs available again |
@@ -150,6 +151,26 @@ Fake `fetch` returning real `Response` objects.
 | M64 | Scroll the lyrics manually while playing | Automatic scroll pauses about 4 s, then resumes |
 | M65 | Unpaired `.lrc` in the selection | Counted as "ignorada" |
 | M66 | Phone width, light and dark | Full screen with large controls; compact player hidden while open and back after closing; no horizontal scroll |
+| M67 | Create a playlist with the panel open | "Lista doble de «nombre»", "Lista vacía · head = null · tail = null" and the explanation; "Todavía no hay operaciones en esta lista" |
+| M68 | Add at end on the empty playlist, then again | `append()`; "Se agregó «X» en la lista vacía: ahora es head y tail", then "Se agregó «Y» al final (tail)"; `length`, `head`, `tail` updated; the new node, its neighbor and their connector flash |
+| M69 | Add at start | `prepend()`; "Se agregó «X» al inicio (head)"; `head` tag moves |
+| M70 | Add at position 2 | `insert(1)`; "Se insertó «X» entre «A» y «B»"; three nodes and two connectors flash |
+| M71 | Remove first / last / middle | `removeNode()`; "… del inicio: «B» es el nuevo head" / "… del final: «A» es el nuevo tail" / "Se quitó un nodo: «A» y «B» ahora se enlazan"; the two linked neighbors and their connector flash |
+| M72 | Remove the current song while playing | Playback continues with the next song; `current` tag moves to it; sentence names the two nodes that are now linked |
+| M73 | Next / previous | Only the `current` tag and the dashed neighbors move; no flash; "Última operación" unchanged |
+| M74 | Repeat "toda la lista", next at the tail | `current` goes to `head`; the list stays non-circular (`tail.next` shows `null`) |
+| M75 | Library or playlist with 40+ songs, playing the 30th | 31 cards ([14]…[44]), "… 14 nodos antes", "… N nodos después"; the current card is visible in the panel |
+| M76 | Same list without being the context | Window starts at `head`, 16 cards and "… N nodos después"; no `current` tag |
+| M77 | Switch the visible playlist | Panel follows it; nothing flashes; `current` only if that playlist is playing |
+| M78 | Click a node card (mouse and Enter) | That node plays in the visible playlist and becomes `current` |
+| M79 | Progress, play/pause, volume while the panel is open | The chain is not rebuilt (no flash, scroll position kept) |
+| M80 | Hide / show on desktop at 1100, 1280, 1366, 1440 and 1920 px | Toggle `aria-pressed` and label change; the list takes the free space; no truncated fixed label, no horizontal scroll |
+| M81 | Tablet (768–1099 px) | Hidden by default; toggle opens an overlay with backdrop; focus on "Ocultar estructura"; Escape and backdrop close it and focus returns to the toggle |
+| M82 | Phone (< 768 px) | Hidden by default; toggle opens a bottom sheet (≤ 75% height) with handle and close button above the compact player; cards playable; no horizontal scroll |
+| M83 | "Reproduciendo ahora" while the panel is open | The view covers the panel (panel `inert`); Escape closes the view first; pressing the structure toggle closes the view and shows the panel |
+| M84 | Light and dark theme | Cards, tags, `current`, neighbors and flash readable in both |
+| M85 | "Reducir movimiento" | No flash animation: the changed nodes keep a static highlight until the next change; scroll is instant |
+| M86 | Screen reader | Each new operation sentence is announced once (`aria-live="polite"`); cards read "Reproducir «título», nodo i" |
 
 ## 3. Before every push
 

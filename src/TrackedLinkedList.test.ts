@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { DoublyLinkedList } from "./DoublyLinkedList";
 import type { LinkedList } from "./LinkedList";
+import type { Node } from "./Node";
 import { TrackedLinkedList } from "./TrackedLinkedList";
 
 function expectValidList<T>(list: LinkedList<T>, expected: T[]): void {
@@ -29,6 +30,10 @@ function trackedOf(...values: string[]): { inner: DoublyLinkedList<string>; list
     inner.append(value);
   }
   return { inner, list: new TrackedLinkedList(inner, (value) => value.toUpperCase()) };
+}
+
+function nodeAt<T>(list: LinkedList<T>, index: number): Node<T> {
+  return list.traverseToIndex(index);
 }
 
 describe("TrackedLinkedList delegation", () => {
@@ -65,7 +70,8 @@ describe("TrackedLinkedList delegation", () => {
 describe("TrackedLinkedList recording", () => {
   it("records append with index length - 1 and its previous neighbor", () => {
     const { list } = trackedOf("a");
-    list.append("b");
+    const previous = nodeAt(list, 0);
+    const node = list.append("b");
     expect(list.lastOperation).toMatchObject({
       type: "append",
       index: 1,
@@ -73,19 +79,26 @@ describe("TrackedLinkedList recording", () => {
       previousLabel: "A",
       nextLabel: null,
     });
+    expect(list.lastOperation?.previousNode).toBe(previous);
+    expect(list.lastOperation?.node).toBe(node);
+    expect(list.lastOperation?.nextNode).toBeNull();
+    expect(previous.next).toBe(node);
     expectValidList(list, ["a", "b"]);
   });
 
   it("records append on an empty list with no neighbors", () => {
     const { list } = trackedOf();
-    list.append("a");
+    const node = list.append("a");
     expect(list.lastOperation).toMatchObject({ type: "append", index: 0, previousLabel: null, nextLabel: null });
+    expect(list.lastOperation).toMatchObject({ previousNode: null, nextNode: null });
+    expect(list.lastOperation?.node).toBe(node);
     expectValidList(list, ["a"]);
   });
 
   it("records prepend with index 0 and its next neighbor", () => {
     const { list } = trackedOf("b");
-    list.prepend("a");
+    const following = nodeAt(list, 0);
+    const node = list.prepend("a");
     expect(list.lastOperation).toMatchObject({
       type: "prepend",
       index: 0,
@@ -93,12 +106,18 @@ describe("TrackedLinkedList recording", () => {
       previousLabel: null,
       nextLabel: "B",
     });
+    expect(list.lastOperation?.previousNode).toBeNull();
+    expect(list.lastOperation?.node).toBe(node);
+    expect(list.lastOperation?.nextNode).toBe(following);
+    expect(following.prev).toBe(node);
     expectValidList(list, ["a", "b"]);
   });
 
   it("records insert in the middle with both neighbors", () => {
     const { list } = trackedOf("a", "c");
-    list.insert(1, "b");
+    const previous = nodeAt(list, 0);
+    const following = nodeAt(list, 1);
+    const node = list.insert(1, "b");
     expect(list.lastOperation).toMatchObject({
       type: "insert",
       index: 1,
@@ -106,11 +125,18 @@ describe("TrackedLinkedList recording", () => {
       previousLabel: "A",
       nextLabel: "C",
     });
+    expect(list.lastOperation?.previousNode).toBe(previous);
+    expect(list.lastOperation?.node).toBe(node);
+    expect(list.lastOperation?.nextNode).toBe(following);
+    expect(previous.next).toBe(node);
+    expect(following.prev).toBe(node);
     expectValidList(list, ["a", "b", "c"]);
   });
 
   it("records remove with the neighbors that become linked", () => {
     const { list } = trackedOf("a", "b", "c");
+    const previous = nodeAt(list, 0);
+    const following = nodeAt(list, 2);
     list.remove(1);
     expect(list.lastOperation).toMatchObject({
       type: "remove",
@@ -119,18 +145,28 @@ describe("TrackedLinkedList recording", () => {
       previousLabel: "A",
       nextLabel: "C",
     });
+    expect(list.lastOperation?.previousNode).toBe(previous);
+    expect(list.lastOperation?.node).toBeNull();
+    expect(list.lastOperation?.nextNode).toBe(following);
+    expect(previous.next).toBe(following);
     expectValidList(list, ["a", "c"]);
   });
 
   it("records remove of the head with no previous neighbor", () => {
     const { list } = trackedOf("a", "b");
+    const following = nodeAt(list, 1);
     list.remove(0);
     expect(list.lastOperation).toMatchObject({ type: "remove", index: 0, previousLabel: null, nextLabel: "B" });
+    expect(list.lastOperation).toMatchObject({ previousNode: null, node: null });
+    expect(list.lastOperation?.nextNode).toBe(following);
+    expect(list.head).toBe(following);
     expectValidList(list, ["b"]);
   });
 
   it("records removeNode in the middle with index null and both neighbors", () => {
     const { inner, list } = trackedOf("a", "b", "c");
+    const previous = nodeAt(list, 0);
+    const following = nodeAt(list, 2);
     list.removeNode(inner.traverseToIndex(1));
     expect(list.lastOperation).toMatchObject({
       type: "removeNode",
@@ -139,7 +175,22 @@ describe("TrackedLinkedList recording", () => {
       previousLabel: "A",
       nextLabel: "C",
     });
+    expect(list.lastOperation?.previousNode).toBe(previous);
+    expect(list.lastOperation?.node).toBeNull();
+    expect(list.lastOperation?.nextNode).toBe(following);
+    expect(following.prev).toBe(previous);
     expectValidList(list, ["a", "c"]);
+  });
+
+  it("records removeNode of the head with no previous neighbor", () => {
+    const { list } = trackedOf("a", "b", "c");
+    const following = nodeAt(list, 1);
+    list.removeNode(nodeAt(list, 0));
+    expect(list.lastOperation).toMatchObject({ type: "removeNode", index: null, valueLabel: "A", previousLabel: null, nextLabel: "B" });
+    expect(list.lastOperation).toMatchObject({ previousNode: null, node: null });
+    expect(list.lastOperation?.nextNode).toBe(following);
+    expect(list.head).toBe(following);
+    expectValidList(list, ["b", "c"]);
   });
 
   it("records removeNode of the tail with no next neighbor", () => {
@@ -148,9 +199,29 @@ describe("TrackedLinkedList recording", () => {
     if (tail === null) {
       throw new Error("Expected a tail");
     }
+    const previous = nodeAt(list, 0);
     list.removeNode(tail);
     expect(list.lastOperation).toMatchObject({ type: "removeNode", index: null, previousLabel: "A", nextLabel: null });
+    expect(list.lastOperation?.previousNode).toBe(previous);
+    expect(list.lastOperation).toMatchObject({ node: null, nextNode: null });
+    expect(list.tail).toBe(previous);
     expectValidList(list, ["a"]);
+  });
+
+  it("records removeNode of the only node with no neighbors", () => {
+    const { list } = trackedOf("a");
+    list.removeNode(nodeAt(list, 0));
+    expect(list.lastOperation).toMatchObject({
+      type: "removeNode",
+      index: null,
+      valueLabel: "A",
+      previousLabel: null,
+      nextLabel: null,
+      previousNode: null,
+      node: null,
+      nextNode: null,
+    });
+    expectValidList(list, []);
   });
 
   it("records clear with index null and no labels", () => {
@@ -162,6 +233,9 @@ describe("TrackedLinkedList recording", () => {
       valueLabel: null,
       previousLabel: null,
       nextLabel: null,
+      previousNode: null,
+      node: null,
+      nextNode: null,
     });
     expectValidList(list, []);
   });
@@ -173,6 +247,19 @@ describe("TrackedLinkedList recording", () => {
     const timestamp = list.lastOperation?.timestamp ?? 0;
     expect(timestamp).toBeGreaterThanOrEqual(before);
     expect(timestamp).toBeLessThanOrEqual(Date.now());
+  });
+
+  it("keeps the node references of every operation in the history", () => {
+    const { list } = trackedOf();
+    const first = list.append("a");
+    const last = list.append("c");
+    const middle = list.insert(1, "b");
+    const [append, , insert] = list.history;
+    expect(append.node).toBe(first);
+    expect(insert.previousNode).toBe(first);
+    expect(insert.node).toBe(middle);
+    expect(insert.nextNode).toBe(last);
+    expectValidList(list, ["a", "b", "c"]);
   });
 
   it("keeps operations oldest first", () => {

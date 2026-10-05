@@ -10,6 +10,7 @@ import { PlaylistManager } from "./PlaylistManager";
 import { SidebarView } from "./SidebarView";
 import type { Song } from "./Song";
 import { SongLoader } from "./SongLoader";
+import { StructurePanelView } from "./StructurePanelView";
 import { TrackListView, type AddSongRequest, type SongPlacement } from "./TrackListView";
 import type { AddTracksResult, LoadResult, PlayerErrorCode, PlayerState, PlaylistNameIssue } from "./types";
 
@@ -33,7 +34,10 @@ export class App {
     App.element("sidebar"),
     App.element("drawer-backdrop"),
     App.element("main"),
+    App.element("structure-backdrop"),
+    App.element("structure-panel"),
   ]);
+  readonly #structure = new StructurePanelView(App.element("structure-panel"), App.element("structure-backdrop"));
   readonly #nowPlayingBar = new PlayerBarView(this.#nowPlaying.controlsSlot);
   readonly #notifications = new NotificationView(App.element("notifications"));
   #isLoading = false;
@@ -44,6 +48,7 @@ export class App {
     this.bindPlayerBar(this.#playerBar);
     this.bindPlayerBar(this.#nowPlayingBar);
     this.bindNowPlaying();
+    this.bindStructure();
     this.bindPlayer();
     this.render();
     this.showPlayerState(this.#player.getState());
@@ -77,6 +82,7 @@ export class App {
     bar.onSeek((seconds) => player.seek(seconds));
     bar.onVolumeChange((volume) => player.setVolume(volume));
     bar.onToggleNowPlaying(() => this.toggleNowPlaying());
+    bar.onToggleStructure(() => this.toggleStructure());
   }
 
   private bindNowPlaying(): void {
@@ -88,6 +94,16 @@ export class App {
       this.#playerBar.setNowPlayingOpen(isOpen);
       this.#nowPlayingBar.setNowPlayingOpen(isOpen);
     });
+  }
+
+  private bindStructure(): void {
+    const showOpen = (isOpen: boolean): void => {
+      this.#playerBar.setStructureOpen(isOpen);
+      this.#nowPlayingBar.setStructureOpen(isOpen);
+    };
+    this.#structure.onPlayNode((playlist, node) => this.run(() => this.#player.playFrom(playlist, node)));
+    this.#structure.onVisibilityChange(showOpen);
+    showOpen(this.#structure.isOpen);
   }
 
   private bindPlayer(): void {
@@ -121,6 +137,7 @@ export class App {
     this.#nowPlaying.render(state, context);
     this.#trackList.setPlayback(context, state.isPlaying);
     this.#sidebar.setPlayback(context?.id ?? null, state.isPlaying);
+    this.#structure.render(this.#manager.visiblePlaylist, context);
     document.title = App.documentTitle(state);
   }
 
@@ -135,6 +152,15 @@ export class App {
       this.#nowPlaying.close();
     } else {
       this.#nowPlaying.open();
+    }
+  }
+
+  private toggleStructure(): void {
+    if (this.#nowPlaying.isOpen) {
+      this.#nowPlaying.close();
+      this.#structure.open();
+    } else {
+      this.#structure.toggle();
     }
   }
 

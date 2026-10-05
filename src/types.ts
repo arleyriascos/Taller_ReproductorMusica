@@ -1,8 +1,15 @@
+import type { Node } from "./Node";
 import type { Song } from "./Song";
 
 export type ListOperationType = "append" | "prepend" | "insert" | "remove" | "removeNode" | "clear";
 
-export interface ListOperation {
+export interface OperationLinks<T> {
+  previousNode: Node<T> | null;
+  node: Node<T> | null;
+  nextNode: Node<T> | null;
+}
+
+export interface ListOperation<T> extends OperationLinks<T> {
   type: ListOperationType;
   index: number | null;
   valueLabel: string | null;

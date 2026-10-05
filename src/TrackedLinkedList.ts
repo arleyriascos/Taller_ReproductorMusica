@@ -1,13 +1,13 @@
 import type { Node } from "./Node";
 import type { LinkedList } from "./LinkedList";
-import type { ListOperation, ListOperationType } from "./types";
+import type { ListOperation, ListOperationType, OperationLinks } from "./types";
 
 const HISTORY_LIMIT = 20;
 
 export class TrackedLinkedList<T> implements LinkedList<T> {
   readonly #inner: LinkedList<T>;
   readonly #describe: (value: T) => string;
-  readonly #history: ListOperation[] = [];
+  readonly #history: ListOperation<T>[] = [];
 
   constructor(inner: LinkedList<T>, describe: (value: T) => string) {
     this.#inner = inner;
@@ -26,11 +26,11 @@ export class TrackedLinkedList<T> implements LinkedList<T> {
     return this.#inner.length;
   }
 
-  get history(): readonly ListOperation[] {
+  get history(): readonly ListOperation<T>[] {
     return this.#history;
   }
 
-  get lastOperation(): ListOperation | null {
+  get lastOperation(): ListOperation<T> | null {
     return this.#history.at(-1) ?? null;
   }
 
@@ -84,19 +84,18 @@ export class TrackedLinkedList<T> implements LinkedList<T> {
 
   clear(): void {
     this.#inner.clear();
-    this.record("clear", null, null, null, null);
+    this.record("clear", null, null, { previousNode: null, node: null, nextNode: null });
   }
 
   private recordInsertion(type: ListOperationType, index: number, node: Node<T>): Node<T> {
-    this.record(type, index, this.#describe(node.value), this.labelOf(node.prev), this.labelOf(node.next));
+    this.record(type, index, this.#describe(node.value), { previousNode: node.prev, node, nextNode: node.next });
     return node;
   }
 
   private removeAndRecord(type: ListOperationType, index: number | null, node: Node<T>, removal: () => T): T {
-    const previous = node.prev;
-    const following = node.next;
+    const links = { previousNode: node.prev, node: null, nextNode: node.next };
     const value = removal();
-    this.record(type, index, this.#describe(value), this.labelOf(previous), this.labelOf(following));
+    this.record(type, index, this.#describe(value), links);
     return value;
   }
 
@@ -104,14 +103,10 @@ export class TrackedLinkedList<T> implements LinkedList<T> {
     return node === null ? null : this.#describe(node.value);
   }
 
-  private record(
-    type: ListOperationType,
-    index: number | null,
-    valueLabel: string | null,
-    previousLabel: string | null,
-    nextLabel: string | null,
-  ): void {
-    this.#history.push({ type, index, valueLabel, previousLabel, nextLabel, timestamp: Date.now() });
+  private record(type: ListOperationType, index: number | null, valueLabel: string | null, links: OperationLinks<T>): void {
+    const previousLabel = this.labelOf(links.previousNode);
+    const nextLabel = this.labelOf(links.nextNode);
+    this.#history.push({ type, index, valueLabel, previousLabel, nextLabel, ...links, timestamp: Date.now() });
     if (this.#history.length > HISTORY_LIMIT) {
       this.#history.shift();
     }
