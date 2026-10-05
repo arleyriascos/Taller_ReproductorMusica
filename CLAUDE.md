@@ -90,7 +90,8 @@ Taller_ReproductorMusica/
     ├── DoublyLinkedList.test.ts
     ├── TrackedLinkedList.test.ts
     ├── Playlist.test.ts
-    └── PlaylistManager.test.ts
+    ├── PlaylistManager.test.ts
+    └── SongLoader.test.ts
 ```
 
 `types.ts` holds only data shapes without behavior (`ListOperation`, `SongDetails`, `LoadedTrack`, `StoredState`).

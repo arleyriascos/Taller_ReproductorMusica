@@ -34,12 +34,26 @@ Every data-structure test ends by asserting the invariants of `DATA_STRUCTURE.md
 ### PlaylistManager.test.ts
 - Starts with the Library ("Biblioteca", `isLibrary`) visible and no user playlists.
 - `checkName`: empty, spaces only, 41 characters → issue; 40 characters after trimming accepted; "biblioteca" and duplicates with different case and accents → `duplicate`.
+- Name comparison ignores case and accents, but "ñ" is a distinct letter: "Canción" equals "CANCION", while "Año" and "Ano" are different names.
 - `createPlaylist` trims the name, throws the issue code, keeps insertion order.
 - `renamePlaylist` excludes the playlist itself from the duplicate check; rejects another playlist's name; cannot rename the Library.
 - `setVisible` rejects unknown ids; deleting the visible playlist makes the Library visible; deleting another keeps the visible one; the Library cannot be deleted.
 - `addTracks` (real `File` objects): new → `added` at the end of the Library; same fingerprint available → `duplicated`; same fingerprint unavailable → `reconnected` and available again.
 - `removeSongEverywhere` removes every node of the song from the Library and all playlists and makes the song unavailable.
 - `duplicatePlaylist`: names "(copia)", "(copia 2)", "(copia 3)"; respects 40 characters; the copy is independent; unknown id throws.
+
+### SongLoader.test.ts
+Runs in Node with real `File` objects and an injected playability probe (no audio element).
+- Ignores non-audio files and counts them in `ignored`.
+- Rejects audio the probe cannot play with `unsupported-format`.
+- Accepts by extension when `file.type` is empty and probes the MIME inferred from the extension; an unknown extension with an empty type is ignored.
+- Natural sort: "2 - b.mp3" before "10 - a.mp3".
+- Parse failure (invalid bytes) falls back to the file-name title, empty artist and album, duration 0, no cover.
+- Fingerprint equals `Song.fingerprintOf(file)`.
+- Order preserved with more files than the concurrency limit (4).
+- A generated WAV with RIFF INFO tags yields its title, artist and duration.
+
+`MusicPlayer` is not unit-tested (it depends on the browser audio element); it is validated manually (M08–M14, M20, M21).
 
 ## 2. Manual
 

@@ -22,6 +22,8 @@ Dependency direction: Views → App → services and model → Playlist → Trac
 - `isAvailable()`: `sourceUrl !== null`.
 - `release()`: revokes object URLs and marks the song unavailable.
 - `id` from `crypto.randomUUID()`. Fingerprint: `${file.name}|${file.size}|${file.lastModified}`.
+- `duration` is read through a getter. `updateDuration(seconds)` completes it only when the stored duration is 0 and the new value is finite and positive (used by `MusicPlayer` when metadata had no duration).
+- `artist` and `album` may be empty strings; the views choose the fallback text (for example "Artista desconocido").
 
 ### Playlist
 - Fields: `id`, `name`, `isLibrary` (readonly), the decorated list, `current: Node<Song> | null`.
@@ -43,22 +45,40 @@ Dependency direction: Views → App → services and model → Playlist → Trac
 - `toStoredState()` and `restore(state)` for persistence.
 
 ### SongLoader
-- `load(files: Iterable<File>): Promise<{ tracks: LoadedTrack[]; rejected: { name: string; reason: string }[] }>`.
-- Accepts a file when `audio.canPlayType(file.type)` is not empty; when `file.type` is empty (common with folders) falls back to the extension list: mp3, m4a, aac, wav, ogg, oga, opus, flac, webm.
-- Reads metadata with `music-metadata` (parse from the `File`/`Blob`); missing title → file name without extension; missing artist → "Artista desconocido"; missing cover → `null`.
-- Duration from metadata; if absent, reads it from a temporary audio element.
-- Processes files with limited concurrency (4 at a time) so large folders do not freeze the page.
+- `constructor(canPlay)`: an injected playability probe `(mimeType) => boolean`. The default uses a detached audio element's `canPlayType` (true when the result is not empty). Tests inject their own probe and run in Node.
+- `load(files: Iterable<File>): Promise<LoadResult>` with `LoadResult = { tracks: LoadedTrack[]; rejected: RejectedFile[]; ignored: number }` and `RejectedFile = { name; reason: 'unsupported-format' }` (`types.ts`).
+- Classification per file:
+  - Audio candidate: MIME starts with `audio/` or the extension is one of mp3, m4a, aac, wav, ogg, oga, opus, flac, webm, wma.
+  - Not a candidate (covers, text files inside a folder): counted in `ignored`, no message per file.
+  - Candidate whose MIME (or the MIME inferred from the extension when `file.type` is empty) fails the probe: `rejected` with `unsupported-format`.
+  - Otherwise: a `LoadedTrack`.
+- Order: input files are sorted in natural order by `webkitRelativePath` when present, else by name (`localeCompare` with `numeric: true`, `sensitivity: 'base'`), so "2 - b" comes before "10 - a". Sorting the incoming `File` objects is allowed: it is input, not a song collection.
+- Metadata with `music-metadata`, loaded with a dynamic `import()` so it is a separate chunk, parsing the `File` as a `Blob` (browser entry, no Node polyfills), covers included.
+  - Title: tag title, else the file name without extension.
+  - Artist and album: tag values or `""`. No Spanish text in the loader.
+  - Duration: `format.duration` when finite and positive, else 0; `MusicPlayer` completes it from the audio element.
+  - Cover: first picture as a `Blob` with its MIME type, else `null`.
+  - A parse failure never rejects the file: file-name title, empty strings, duration 0, no cover.
+- Fingerprint with `Song.fingerprintOf(file)`.
+- Concurrency limit of 4 while preserving the sorted order in the result.
 - Never reads files from paths, only from user-provided `File` objects.
 
 ### MusicPlayer (Singleton)
-- `private static instance`, `private constructor`, `static getInstance()`. Owns the only `HTMLAudioElement`.
-- State: `context: Playlist | null`, `isPlaying`, `volume` (0–1, default 0.8), `isMuted`.
-- `playFrom(playlist, node)`, `togglePlayPause()`, `next()`, `previous()`, `seek(seconds)`, `setVolume(value)`, `toggleMute()`, `stop()`, `refresh()` (re-sync after the context playlist changed, used after removals).
-- `ended`: if `context.hasNext()` → next and play; else stop at the end.
-- `error` on a source: notify, do not auto-skip.
-- Handles the promise returned by `audio.play()`.
-- Listeners set by `App`: `onStateChange(callback)`, `onProgress(callback)`, `onError(callback)`.
-- Unavailable songs cannot be played; the player reports it instead.
+- `private static instance`, `private constructor`, `static getInstance()`. The constructor creates the only playback `HTMLAudioElement` (`preload = "metadata"`) and registers its events.
+- Private state: `context: Playlist | null`, `loadedSong: Song | null`, `volume` (0–1, default 0.8), `muted`.
+- Listener setters, one listener each (a new call replaces the previous one): `onStateChange(callback(state: PlayerState))`, `onProgress(callback(currentTime, duration))`, `onError(callback(code: PlayerErrorCode, song))`.
+- `getState(): PlayerState` built from `context.current`, the audio element and the private state; `hasNext` / `hasPrevious` come from the context playlist.
+- `playFrom(playlist, node)`: `playlist.select(node)`, the playlist becomes the context, plays the current song.
+- `togglePlayPause()`: if nothing is loaded and the context has a current song, loads and plays it; otherwise toggles.
+- `next()` / `previous()`: only through `context.next()` / `context.previous()`; a returned node is loaded and played, `null` does nothing.
+- `ended`: if `context.hasNext()` → `next()`; else pause, keep the last song as current, `currentTime = 0`, notify state.
+- `seek(seconds)` clamped to [0, duration]. `setVolume(value)` clamped to [0, 1]; a value above 0 while muted unmutes. `toggleMute()`.
+- `refresh()` after the context playlist changed: `context.current` null → stop and unload; a different song than the loaded one → load it and keep playing only if it was playing; otherwise only notify state.
+- `stop()`: pause and `currentTime = 0`. `clearContext()`: stop, unload the source (`removeAttribute("src")` then `load()`), context and loaded song become `null`.
+- Errors (`PlayerErrorCode`): loading an unavailable song → `onError('unavailable', song)` without changing the source. Audio `error` event → pause and `onError('playback-failed', loadedSong)`; never auto-skip.
+- The promise from `audio.play()` is handled: `AbortError` (fast switching) is ignored; a rejection caused by a media error is left to the `error` event so it is reported once; other rejections → `playback-failed`.
+- `loadedmetadata` → `loadedSong.updateDuration(audio.duration)` and notify state.
+- State notified on play, pause, ended, volume change and source change; progress notified on `timeupdate`.
 
 ### PlaylistStorage
 - Keys: `musongs.state.v1` (structure) and `musongs.preferences.v1` (volume, structure panel open).

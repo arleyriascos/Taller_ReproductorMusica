@@ -1,3 +1,5 @@
+import type { Song } from "./Song";
+
 export type ListOperationType = "append" | "prepend" | "insert" | "remove" | "removeNode" | "clear";
 
 export interface ListOperation {
@@ -29,4 +31,28 @@ export interface AddTracksResult {
   added: number;
   reconnected: number;
   duplicated: number;
+}
+
+export interface RejectedFile {
+  name: string;
+  reason: "unsupported-format";
+}
+
+export interface LoadResult {
+  tracks: LoadedTrack[];
+  rejected: RejectedFile[];
+  ignored: number;
+}
+
+export type PlayerErrorCode = "unavailable" | "playback-failed";
+
+export interface PlayerState {
+  song: Song | null;
+  isPlaying: boolean;
+  currentTime: number;
+  duration: number;
+  volume: number;
+  isMuted: boolean;
+  hasNext: boolean;
+  hasPrevious: boolean;
 }

@@ -5,8 +5,8 @@ export class Song {
   readonly title: string;
   readonly artist: string;
   readonly album: string;
-  readonly duration: number;
   readonly fingerprint: string;
+  #duration: number;
   #coverUrl: string | null = null;
   #sourceUrl: string | null = null;
 
@@ -15,12 +15,16 @@ export class Song {
     this.title = details.title;
     this.artist = details.artist;
     this.album = details.album;
-    this.duration = details.duration;
+    this.#duration = details.duration;
     this.fingerprint = details.fingerprint;
   }
 
   static fingerprintOf(file: File): string {
     return `${file.name}|${file.size}|${file.lastModified}`;
+  }
+
+  get duration(): number {
+    return this.#duration;
   }
 
   get coverUrl(): string | null {
@@ -35,6 +39,12 @@ export class Song {
     this.release();
     this.#sourceUrl = URL.createObjectURL(file);
     this.#coverUrl = cover === null ? null : URL.createObjectURL(cover);
+  }
+
+  updateDuration(seconds: number): void {
+    if (this.#duration === 0 && Number.isFinite(seconds) && seconds > 0) {
+      this.#duration = seconds;
+    }
   }
 
   release(): void {
