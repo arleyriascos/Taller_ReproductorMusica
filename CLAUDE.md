@@ -64,6 +64,7 @@ Taller_ReproductorMusica/
 ├── package.json
 ├── tsconfig.json
 ├── .gitignore
+├── .gitattributes
 ├── docs/
 └── src/
     ├── main.ts
@@ -88,7 +89,8 @@ Taller_ReproductorMusica/
     ├── NotificationView.ts
     ├── DoublyLinkedList.test.ts
     ├── TrackedLinkedList.test.ts
-    └── Playlist.test.ts
+    ├── Playlist.test.ts
+    └── PlaylistManager.test.ts
 ```
 
 `types.ts` holds only data shapes without behavior (`ListOperation`, `SongDetails`, `LoadedTrack`, `StoredState`).

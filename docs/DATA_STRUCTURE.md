@@ -73,7 +73,7 @@ Contract implemented by `DoublyLinkedList<T>` and `TrackedLinkedList<T>`.
 - `head`, `tail`, `length` and all queries delegate to `inner`.
 - Each mutating method delegates, then records a `ListOperation` (from `types.ts`):
   - `type`: `'append' | 'prepend' | 'insert' | 'remove' | 'removeNode' | 'clear'`
-  - `index`: position affected
+  - `index: number | null`: position affected; `removeNode` and `clear` record `null`, so `removeNode` stays O(1) without computing the node's position
   - `valueLabel`: `describe(value)`
   - `previousLabel`, `nextLabel`: labels of the neighbors linked by the operation, or `null`
   - `timestamp`

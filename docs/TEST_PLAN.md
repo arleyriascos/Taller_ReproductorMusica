@@ -31,6 +31,16 @@ Every data-structure test ends by asserting the invariants of `DATA_STRUCTURE.md
 - `removeAllOf` removes every node holding the song.
 - `clone`: same order, different nodes, same `Song` objects, empty history, `current` null, original unchanged after modifying the clone.
 
+### PlaylistManager.test.ts
+- Starts with the Library ("Biblioteca", `isLibrary`) visible and no user playlists.
+- `checkName`: empty, spaces only, 41 characters → issue; 40 characters after trimming accepted; "biblioteca" and duplicates with different case and accents → `duplicate`.
+- `createPlaylist` trims the name, throws the issue code, keeps insertion order.
+- `renamePlaylist` excludes the playlist itself from the duplicate check; rejects another playlist's name; cannot rename the Library.
+- `setVisible` rejects unknown ids; deleting the visible playlist makes the Library visible; deleting another keeps the visible one; the Library cannot be deleted.
+- `addTracks` (real `File` objects): new → `added` at the end of the Library; same fingerprint available → `duplicated`; same fingerprint unavailable → `reconnected` and available again.
+- `removeSongEverywhere` removes every node of the song from the Library and all playlists and makes the song unavailable.
+- `duplicatePlaylist`: names "(copia)", "(copia 2)", "(copia 3)"; respects 40 characters; the copy is independent; unknown id throws.
+
 ## 2. Manual
 
 | ID | Case | Expected |
